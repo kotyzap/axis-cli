@@ -1,7 +1,16 @@
 # axis-cli
 
+<img width="2752" height="1536" alt="Camera_Fleet_Command_Line_Management" src="https://github.com/user-attachments/assets/6129f046-4e44-44bd-afb8-13771cbfd26e" />
+
+
 A command-line tool for controlling Axis IP cameras: general VAPIX control (params, PTZ, ACAPs, reboot),
 CamOverlay/CamStreamer/CamSwitcher management, and fleet-wide health checks — all from the terminal.
+
+<div align="center">
+
+  https://github.com/user-attachments/assets/712be4b2-06d4-4b94-952a-132c0bde6ac1
+
+</div>
 
 Built on `camstreamerlib` v4, `commander`, and `cli-table3`.
 
