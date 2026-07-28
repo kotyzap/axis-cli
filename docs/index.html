@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>axis-cli — Terminal control for Axis IP cameras</title>
+<meta name="description" content="CLI for controlling Axis IP cameras — VAPIX, CamOverlay, CamStreamer, CamSwitcher, and fleet health.">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-alt: #f6f7f9;
+    --text: #1a1d21;
+    --text-dim: #565c66;
+    --border: #e3e5e8;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --code-bg: #0f1117;
+    --code-text: #e6e8eb;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+
+  header.hero {
+    background: var(--bg-alt);
+    border-bottom: 1px solid var(--border);
+    padding: 72px 0 56px;
+    text-align: center;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--accent-dark);
+    background: #e8efff;
+    padding: 4px 12px;
+    border-radius: 999px;
+    margin-bottom: 20px;
+  }
+  h1 {
+    font-size: 2.6rem;
+    margin: 0 0 16px;
+    letter-spacing: -0.02em;
+  }
+  .lede {
+    font-size: 1.15rem;
+    color: var(--text-dim);
+    max-width: 640px;
+    margin: 0 auto 32px;
+  }
+  .cta-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-block;
+    padding: 11px 22px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+  }
+  .btn:hover { text-decoration: none; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .btn-secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  section { padding: 56px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+  h2 {
+    font-size: 1.6rem;
+    margin: 0 0 28px;
+    letter-spacing: -0.01em;
+  }
+
+  .screenshot {
+    width: 100%;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    display: block;
+    margin: 0 0 8px;
+  }
+  .caption { font-size: 0.85rem; color: var(--text-dim); text-align: center; margin-bottom: 0; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 20px;
+  }
+  .card {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 1.02rem; }
+  .card p { margin: 0; color: var(--text-dim); font-size: 0.95rem; }
+
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 20px 22px;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    font-size: 0.88rem;
+    line-height: 1.55;
+  }
+  code {
+    font-family: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  p code, li code {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+
+  ul.feature-list { columns: 2; column-gap: 32px; padding-left: 20px; margin: 0; }
+  ul.feature-list li { break-inside: avoid; margin-bottom: 10px; color: var(--text-dim); }
+
+  .video-wrap {
+    width: auto;
+    max-width: 100%;
+    height: 420px;
+    aspect-ratio: 9 / 16;
+    margin: 0 auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  }
+  .video-wrap video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  @media (max-width: 480px) {
+    .video-wrap { height: 340px; }
+  }
+
+  .resource-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .resource-list a {
+    display: block;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .resource-list a:hover { border-color: var(--accent); text-decoration: none; }
+  .resource-list small { display: block; font-weight: 400; color: var(--text-dim); margin-top: 4px; }
+
+  footer {
+    padding: 40px 0 60px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+
+  @media (max-width: 600px) {
+    h1 { font-size: 2rem; }
+    ul.feature-list { columns: 1; }
+    header.hero { padding: 56px 0 40px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">v1.0.0 · MIT-friendly ISC license · Node ≥ 18</span>
+    <h1>axis-cli</h1>
+    <p class="lede">
+      Terminal control for Axis IP cameras — VAPIX, CamOverlay, CamStreamer, CamSwitcher, and fleet health,
+      all under one <code>axis</code> command.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/" target="_blank" rel="noopener">View on GitHub</a>
+      <a class="btn btn-secondary" href="#install">Install</a>
+      <a class="btn btn-secondary" href="#resources">Resources</a>
+    </div>
+  </div>
+</header>
+
+<section id="overview">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p>
+      axis-cli turns Axis camera management into something you can script, alias, and cron. Instead of
+      clicking through camera web UIs or writing one-off VAPIX curl calls, you save each camera once as a
+      named profile and then run terminal commands to check firmware, control PTZ, toggle overlays, manage
+      streams, switch views, and pull live events — across one camera or an entire fleet.
+    </p>
+    <img class="screenshot" src="img/Camera_Fleet_Command_Line_Management.png" alt="axis-cli fleet health output in a terminal">
+    <p class="caption">Fleet-wide health check across saved camera profiles, run from a single command.</p>
+  </div>
+</section>
+
+<section id="why">
+  <div class="wrap">
+    <h2>Why axis-cli</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Profiles, not IPs</h3>
+        <p>Save credentials once per camera (<code>~/.axis-cli/config.json</code>, mode 0600) and refer to cameras by name everywhere after.</p>
+      </div>
+      <div class="card">
+        <h3>One tool, whole stack</h3>
+        <p>VAPIX params, PTZ, ACAP management, CamOverlay, CamStreamer, CamSwitcher, and live VAPIX events — all under a single <code>axis</code> command.</p>
+      </div>
+      <div class="card">
+        <h3>Cloud or local</h3>
+        <p>Works with cameras on the local network or through CamStreamer Cloud (device-connect.net) via <code>DEVICE_ACCESS_TOKEN</code> — same commands either way.</p>
+      </div>
+      <div class="card">
+        <h3>Fleet-aware</h3>
+        <p><code>axis fleet health</code> checks reachability, firmware, SD card status, and ACAP health across every saved camera — built for cron jobs and scheduled monitoring.</p>
+      </div>
+      <div class="card">
+        <h3>Escape hatch included</h3>
+        <p><code>axis vapix get/post</code> covers anything not wrapped by a dedicated command, so you're never blocked waiting on a feature.</p>
+      </div>
+      <div class="card">
+        <h3>Built on real libraries</h3>
+        <p>Uses <code>camstreamerlib</code> v4, <code>commander</code>, and <code>cli-table3</code> — not a reinvented wheel.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <h2>See it in action</h2>
+    <div class="video-wrap">
+      <video controls preload="metadata" poster="img/Camera_Fleet_Command_Line_Management.png">
+        <source src="img/How_axis-cli_Automates_Camera_Fleets.mp4" type="video/mp4">
+        Your browser doesn't support embedded video —
+        <a href="img/How_axis-cli_Automates_Camera_Fleets.mp4">download the demo</a> instead.
+      </video>
+    </div>
+    <p class="caption">How axis-cli automates camera fleets, end to end.</p>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Features</h2>
+    <ul class="feature-list">
+      <li>Camera profiles: add, list, remove (local IP, HTTPS/TLS, or cloud)</li>
+      <li>General VAPIX: device info, param get/set, reboot</li>
+      <li>PTZ: list presets, go to preset, read position</li>
+      <li>ACAP apps: list, start, stop, restart</li>
+      <li>CamOverlay: list, enable/disable overlays, push text fields</li>
+      <li>CamStreamer: show/start/stop streams</li>
+      <li>CamSwitcher: list, switch view, queue view, clear queue</li>
+      <li>Fleet health: reachability, firmware, SD card, ACAP count</li>
+      <li>Live events: watch VAPIX events (motion, I/O, ACAP) in real time</li>
+      <li>Raw VAPIX escape hatch for anything unwrapped</li>
+    </ul>
+  </div>
+</section>
+
+<section id="try-it">
+  <div class="wrap">
+    <h2>Try it</h2>
+    <pre><code>axis camera add q1656 --ip 192.168.1.50 --user root --pass mypassword
+axis info q1656
+axis ptz goto q1656 "Home" -c 1
+axis overlay text q1656 2 temperature=22.5C humidity=45%
+axis fleet health
+axis events watch q1656</code></pre>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+    <pre><code>npm install
+npm run build
+npm link          # makes the `axis` command available globally</code></pre>
+    <p>Or run it directly without linking: <code>node dist/index.js &lt;command&gt;</code></p>
+  </div>
+</section>
+
+<section id="resources">
+  <div class="wrap">
+    <h2>Resources</h2>
+    <ul class="resource-list">
+      <li>
+        <a href="img/Axis_CLI_Unified_Control.pdf">Unified Control overview (PDF)
+          <small>One-page summary of the tool</small>
+        </a>
+      </li>
+      <li>
+        <a href="img/Axis_CLI_Unified_Control.pptx">Unified Control deck (PPTX)
+          <small>Slide version for presenting</small>
+        </a>
+      </li>
+      <li>
+        <a href="img/axis-fleet-tracker.xlsx">Fleet tracker template (XLSX)
+          <small>Track cameras, firmware, and health checks</small>
+        </a>
+      </li>
+      <li>
+        <a href="img/axis-automation-sample.sh">Automation sample (SH)
+          <small>Example cron-ready health check script</small>
+        </a>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>axis-cli · CLI for controlling Axis IP cameras — VAPIX, CamOverlay, CamStreamer, CamSwitcher, and fleet health.</p>
+  </div>
+</footer>
+
+</body>
+</html>
