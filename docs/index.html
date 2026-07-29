@@ -1,11 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>axis-cli — Terminal control for Axis IP cameras</title>
-<meta name="description" content="CLI for controlling Axis IP cameras — VAPIX, CamOverlay, CamStreamer, CamSwitcher, and fleet health.">
+<meta name="description" content="CLI for controlling Axis IP cameras — VAPIX, CamOverlay, CamStreamer, CamSwitcher, and fleet health. Save cameras as named profiles and script them from the terminal.">
+<meta name="color-scheme" content="light dark">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="axis-cli — Terminal control for Axis IP cameras">
+<meta property="og:description" content="VAPIX, CamOverlay, CamStreamer, CamSwitcher, and fleet health — all under one axis command.">
+<meta property="og:image" content="img/Camera_Fleet_Command_Line_Management.png">
+<meta property="og:url" content="https://kotyzap.github.io/axis-cli/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://kotyzap.github.io/axis-cli/">
+
 <style>
+  /* ---- Light theme (default) ---- */
   :root {
     --bg: #ffffff;
     --bg-alt: #f6f7f9;
@@ -14,22 +25,133 @@
     --border: #e3e5e8;
     --accent: #2563eb;
     --accent-dark: #1d4ed8;
+    --accent-soft: #e8efff;
     --code-bg: #0f1117;
     --code-text: #e6e8eb;
+    --code-comment: #7d8590;
+    --code-cmd: #7ee787;
+    --code-flag: #79c0ff;
+    --code-str: #ffa657;
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --shadow: rgba(0,0,0,0.08);
     --radius: 10px;
   }
+
+  /* ---- Dark theme ---- */
+  :root[data-theme="dark"] {
+    --bg: #0d1117;
+    --bg-alt: #161b22;
+    --text: #e6edf3;
+    --text-dim: #9198a1;
+    --border: #2a313c;
+    --accent: #4c8dff;
+    --accent-dark: #6ba1ff;
+    --accent-soft: #10233f;
+    --code-bg: #010409;
+    --code-text: #e6edf3;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --shadow: rgba(0,0,0,0.5);
+  }
+
   * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { transition: none !important; animation: none !important; }
+  }
+
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     line-height: 1.6;
+    transition: background .2s ease, color .2s ease;
   }
+
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
   .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
 
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    background: var(--accent);
+    color: #fff;
+    padding: 10px 16px;
+    z-index: 100;
+    border-radius: 0 0 8px 0;
+  }
+  .skip-link:focus { left: 0; }
+
+  /* ---- Top bar ---- */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .brand {
+    font-family: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 700;
+    color: var(--text);
+    font-size: 0.98rem;
+  }
+  .brand:hover { text-decoration: none; }
+  .topnav {
+    display: flex;
+    gap: 18px;
+    margin-left: auto;
+    font-size: 0.9rem;
+  }
+  .topnav a { color: var(--text-dim); }
+  .topnav a:hover { color: var(--accent); text-decoration: none; }
+
+  .theme-toggle {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    padding: 0;
+  }
+  .theme-toggle:hover { border-color: var(--accent); }
+  .theme-toggle svg { width: 17px; height: 17px; }
+  .icon-sun { display: none; }
+  :root[data-theme="dark"] .icon-sun { display: block; }
+  :root[data-theme="dark"] .icon-moon { display: none; }
+
+  @media (max-width: 640px) {
+    .topnav { display: none; }
+    .theme-toggle { margin-left: auto; }
+  }
+
+  /* ---- Hero ---- */
   header.hero {
     background: var(--bg-alt);
     border-bottom: 1px solid var(--border);
@@ -42,49 +164,43 @@
     font-weight: 600;
     letter-spacing: .04em;
     color: var(--accent-dark);
-    background: #e8efff;
+    background: var(--accent-soft);
     padding: 4px 12px;
     border-radius: 999px;
     margin-bottom: 20px;
   }
-  h1 {
-    font-size: 2.6rem;
-    margin: 0 0 16px;
-    letter-spacing: -0.02em;
-  }
+  h1 { font-size: 2.6rem; margin: 0 0 16px; letter-spacing: -0.02em; }
   .lede {
     font-size: 1.15rem;
     color: var(--text-dim);
     max-width: 640px;
     margin: 0 auto 32px;
   }
-  .cta-row {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
+  .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .btn {
     display: inline-block;
     padding: 11px 22px;
     border-radius: 8px;
     font-weight: 600;
     font-size: 0.95rem;
-    text-decoration: none;
   }
   .btn:hover { text-decoration: none; }
+  .btn-icon {
+    width: 16px;
+    height: 16px;
+    vertical-align: -3px;
+    margin-right: 7px;
+  }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: var(--accent-dark); }
-  .btn-secondary { background: #fff; color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
   .btn-secondary:hover { border-color: var(--accent); }
 
   section { padding: 56px 0; border-bottom: 1px solid var(--border); }
   section:last-of-type { border-bottom: none; }
-  h2 {
-    font-size: 1.6rem;
-    margin: 0 0 28px;
-    letter-spacing: -0.01em;
-  }
+  h2 { font-size: 1.6rem; margin: 0 0 12px; letter-spacing: -0.01em; }
+  h2 + .section-note { margin: 0 0 28px; color: var(--text-dim); }
+  h3 { font-size: 1.05rem; }
 
   .screenshot {
     width: 100%;
@@ -109,6 +225,9 @@
   .card h3 { margin: 0 0 8px; font-size: 1.02rem; }
   .card p { margin: 0; color: var(--text-dim); font-size: 0.95rem; }
 
+  /* ---- Code blocks ---- */
+  .code-block { position: relative; margin: 0 0 18px; }
+  .code-block:last-child { margin-bottom: 0; }
   pre {
     background: var(--code-bg);
     color: var(--code-text);
@@ -116,21 +235,68 @@
     border-radius: var(--radius);
     overflow-x: auto;
     font-size: 0.88rem;
-    line-height: 1.55;
+    line-height: 1.6;
+    margin: 0;
+    border: 1px solid var(--border);
   }
-  code {
-    font-family: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  }
-  p code, li code {
+  code { font-family: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+  p code, li code, td code {
     background: var(--bg-alt);
     border: 1px solid var(--border);
     padding: 1px 6px;
     border-radius: 4px;
     font-size: 0.88em;
   }
+  pre .c  { color: var(--code-comment); }   /* comment */
+  pre .k  { color: var(--code-cmd); }       /* command */
+  pre .f  { color: var(--code-flag); }      /* flag */
+  pre .s  { color: var(--code-str); }       /* string / value */
+
+  .copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255,255,255,0.09);
+    color: #e6e8eb;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s ease;
+  }
+  .code-block:hover .copy-btn,
+  .copy-btn:focus-visible { opacity: 1; }
+  .copy-btn:hover { background: rgba(255,255,255,0.18); }
+  @media (hover: none) { .copy-btn { opacity: 1; } }
 
   ul.feature-list { columns: 2; column-gap: 32px; padding-left: 20px; margin: 0; }
   ul.feature-list li { break-inside: avoid; margin-bottom: 10px; color: var(--text-dim); }
+
+  /* ---- Reliability table ---- */
+  .table-scroll { overflow-x: auto; }
+  table.changes {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.93rem;
+  }
+  table.changes th, table.changes td {
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table.changes th {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  table.changes tr:last-child td { border-bottom: none; }
+  table.changes td:first-child { white-space: nowrap; font-weight: 600; }
 
   .video-wrap {
     width: auto;
@@ -141,17 +307,10 @@
     border-radius: var(--radius);
     border: 1px solid var(--border);
     overflow: hidden;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 16px var(--shadow);
   }
-  .video-wrap video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-  @media (max-width: 480px) {
-    .video-wrap { height: 340px; }
-  }
+  .video-wrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  @media (max-width: 480px) { .video-wrap { height: 340px; } }
 
   .resource-list {
     list-style: none;
@@ -174,6 +333,18 @@
   .resource-list a:hover { border-color: var(--accent); text-decoration: none; }
   .resource-list small { display: block; font-weight: 400; color: var(--text-dim); margin-top: 4px; }
 
+  .callout {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin: 24px 0 0;
+    font-size: 0.95rem;
+    color: var(--text-dim);
+  }
+  .callout strong { color: var(--text); }
+
   footer {
     padding: 40px 0 60px;
     text-align: center;
@@ -184,27 +355,59 @@
   @media (max-width: 600px) {
     h1 { font-size: 2rem; }
     ul.feature-list { columns: 1; }
-    header.hero { padding: 56px 0 40px; }
+    header.hero { padding: 48px 0 40px; }
+    section { padding: 44px 0; }
   }
 </style>
 </head>
 <body>
 
-<header class="hero">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#top">axis-cli</a>
+    <nav class="topnav" aria-label="Sections">
+      <a href="#overview">Overview</a>
+      <a href="#features">Features</a>
+      <a href="#try-it">Usage</a>
+      <a href="#install">Install</a>
+      <a href="axis-cli-101.html">Tutorial</a>
+      <a href="#resources">Resources</a>
+      <a href="https://github.com/kotyzap/axis-cli">GitHub</a>
+    </nav>
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark theme" title="Switch theme">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<header class="hero" id="top">
   <div class="wrap">
-    <span class="eyebrow">v1.0.0 · MIT-friendly ISC license · Node ≥ 18</span>
+    <span class="eyebrow">v1.1.2 · ISC license · Node ≥ 18</span>
     <h1>axis-cli</h1>
     <p class="lede">
       Terminal control for Axis IP cameras — VAPIX, CamOverlay, CamStreamer, CamSwitcher, and fleet health,
       all under one <code>axis</code> command.
     </p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="https://github.com/" target="_blank" rel="noopener">View on GitHub</a>
-      <a class="btn btn-secondary" href="#install">Install</a>
-      <a class="btn btn-secondary" href="#resources">Resources</a>
+      <a class="btn btn-primary" href="https://github.com/kotyzap/axis-cli">
+        <svg class="btn-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.07-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.15 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        View on GitHub
+      </a>
+      <a class="btn btn-secondary" href="https://github.com/kotyzap/axis-cli/releases/latest">Download latest</a>
+      <a class="btn btn-secondary" href="axis-cli-101.html">Start the tutorial</a>
     </div>
   </div>
 </header>
+
+<main id="main">
 
 <section id="overview">
   <div class="wrap">
@@ -215,7 +418,7 @@
       named profile and then run terminal commands to check firmware, control PTZ, toggle overlays, manage
       streams, switch views, and pull live events — across one camera or an entire fleet.
     </p>
-    <img class="screenshot" src="img/Camera_Fleet_Command_Line_Management.png" alt="axis-cli fleet health output in a terminal">
+    <img class="screenshot" src="img/Camera_Fleet_Command_Line_Management.png" alt="Terminal showing axis-cli fleet health output: a table of camera profiles with reachability, firmware, SD card and ACAP status columns.">
     <p class="caption">Fleet-wide health check across saved camera profiles, run from a single command.</p>
   </div>
 </section>
@@ -226,7 +429,7 @@
     <div class="grid">
       <div class="card">
         <h3>Profiles, not IPs</h3>
-        <p>Save credentials once per camera (<code>~/.axis-cli/config.json</code>, mode 0600) and refer to cameras by name everywhere after.</p>
+        <p>Save each camera once (<code>~/.axis-cli/config.json</code>, mode 0600) and refer to it by name everywhere after. Verify a profile any time with <code>axis camera test</code>.</p>
       </div>
       <div class="card">
         <h3>One tool, whole stack</h3>
@@ -238,7 +441,19 @@
       </div>
       <div class="card">
         <h3>Fleet-aware</h3>
-        <p><code>axis fleet health</code> checks reachability, firmware, SD card status, and ACAP health across every saved camera — built for cron jobs and scheduled monitoring.</p>
+        <p><code>axis fleet health</code> probes every saved camera in parallel with a per-request timeout, and exits non-zero if any is unreachable — so it works as a cron monitoring check.</p>
+      </div>
+      <div class="card">
+        <h3>Scriptable output</h3>
+        <p>Add <code>--json</code> to any command for machine-readable output you can pipe into <code>jq</code>. Secrets are never included.</p>
+      </div>
+      <div class="card">
+        <h3>Secrets stay out of history</h3>
+        <p>Omit <code>--pass</code> and you're prompted without echo. Or use <code>AXIS_PASS</code> for CI. Nothing lands in your shell history or <code>ps</code> output.</p>
+      </div>
+      <div class="card">
+        <h3>Errors that tell you what to do</h3>
+        <p>Transport and TLS failures name the cause and the fix, instead of a bare <code>fetch failed</code>.</p>
       </div>
       <div class="card">
         <h3>Escape hatch included</h3>
@@ -270,15 +485,17 @@
   <div class="wrap">
     <h2>Features</h2>
     <ul class="feature-list">
-      <li>Camera profiles: add, list, remove (local IP, HTTPS/TLS, or cloud)</li>
+      <li>Camera profiles: add, update, test, list, remove (local IP, HTTPS/TLS, or cloud)</li>
       <li>General VAPIX: device info, param get/set, reboot</li>
       <li>PTZ: list presets, go to preset, read position</li>
-      <li>ACAP apps: list, start, stop, restart</li>
-      <li>CamOverlay: list, enable/disable overlays, push text fields</li>
-      <li>CamStreamer: show/start/stop streams</li>
+      <li>ACAP apps: list (all or running), start, stop, restart</li>
+      <li>CamOverlay: list services, enable/disable, push text fields</li>
+      <li>CamStreamer: list, show, start/stop streams</li>
       <li>CamSwitcher: list, switch view, queue view, clear queue</li>
-      <li>Fleet health: reachability, firmware, SD card, ACAP count</li>
+      <li>Fleet health: parallel probes with timeouts, non-zero exit on failure</li>
       <li>Live events: watch VAPIX events (motion, I/O, ACAP) in real time</li>
+      <li>Self-signed certificate support via <code>--tls-insecure</code></li>
+      <li><code>--json</code> output on every command, for piping into <code>jq</code></li>
       <li>Raw VAPIX escape hatch for anything unwrapped</li>
     </ul>
   </div>
@@ -286,23 +503,159 @@
 
 <section id="try-it">
   <div class="wrap">
-    <h2>Try it</h2>
-    <pre><code>axis camera add q1656 --ip 192.168.1.50 --user root --pass mypassword
-axis info q1656
-axis ptz goto q1656 "Home" -c 1
-axis overlay text q1656 2 temperature=22.5C humidity=45%
-axis fleet health
-axis events watch q1656</code></pre>
+    <h2>Usage</h2>
+
+    <h3>1. Save a camera</h3>
+    <div class="code-block">
+      <pre><code><span class="c"># Omit --pass and you'll be prompted without echo.</span>
+<span class="k">axis camera add</span> q1656 <span class="f">--ip</span> <span class="s">192.168.1.156</span> <span class="f">--user</span> <span class="s">root</span>
+
+<span class="c"># HTTPS: port defaults to 443. Most Axis cameras ship a self-signed cert.</span>
+<span class="k">axis camera add</span> frontdoor <span class="f">--ip</span> <span class="s">192.168.1.60</span> <span class="f">--tls --tls-insecure</span>
+
+<span class="c"># Via CamStreamer Cloud instead of a local IP</span>
+<span class="k">axis camera add</span> remote-cam <span class="f">--cloud-url</span> <span class="s">https://xxxx.device-connect.net</span>
+
+<span class="k">axis camera test</span> q1656      <span class="c"># verify reachability + credentials</span>
+<span class="k">axis camera list</span></code></pre>
+      <button class="copy-btn" type="button">Copy</button>
+    </div>
+
+    <h3>2. Inspect and control it</h3>
+    <div class="code-block">
+      <pre><code><span class="k">axis info</span> q1656                    <span class="c"># brand, firmware, serial, CamStreamer ACAPs</span>
+<span class="k">axis info</span> q1656 <span class="f">--all-acaps</span>        <span class="c"># include third-party ACAPs</span>
+<span class="k">axis apps list</span> q1656 <span class="f">--running</span>
+<span class="k">axis ptz goto</span> q1656 <span class="s">"Home"</span> <span class="f">-c</span> <span class="s">1</span>
+<span class="k">axis overlay text</span> q1656 <span class="s">3</span> temperature=<span class="s">22.5C</span> humidity=<span class="s">45%</span>
+<span class="k">axis stream list</span> q1656
+<span class="k">axis switcher switch</span> q1656 <span class="s">MainView</span>
+<span class="k">axis events watch</span> q1656          <span class="c"># live events until Ctrl+C</span></code></pre>
+      <button class="copy-btn" type="button">Copy</button>
+    </div>
+
+    <h3>3. Monitor the fleet</h3>
+    <div class="code-block">
+      <pre><code><span class="k">axis fleet health</span>
+<span class="k">axis fleet health</span> <span class="f">--timeout</span> <span class="s">3000</span> <span class="f">--concurrency</span> <span class="s">16</span>
+
+<span class="c"># Exits 1 if any camera is unreachable — usable directly in cron</span>
+<span class="k">axis fleet health</span> <span class="f">--json</span> | jq <span class="s">'.[] | select(.reachable == false)'</span></code></pre>
+      <button class="copy-btn" type="button">Copy</button>
+    </div>
+
+    <div class="callout">
+      <strong>On passwords:</strong> avoid putting secrets on the command line — they land in your shell
+      history and are visible in <code>ps</code> to other local users. In order of preference: omit the flag
+      and let the CLI prompt you, set <code>AXIS_PASS</code> / <code>AXIS_CLOUD_TOKEN</code> for CI, or pass
+      <code>--pass</code> only as a last resort.
+    </div>
+  </div>
+</section>
+
+<section id="reliability">
+  <div class="wrap">
+    <h2>Reliability</h2>
+    <p class="section-note">
+      Fixes verified against a live AXIS Q1656 on firmware 12.10.73.
+    </p>
+    <div class="table-scroll">
+      <table class="changes">
+        <thead>
+          <tr><th>Area</th><th>What changed</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Parameter reads</td>
+            <td><code>camstreamerlib</code> returns parameter keys with the leading <code>root.</code> stripped, so brand, product, firmware, serial and IP silently read as empty. Lookups are now prefix-normalised.</td>
+          </tr>
+          <tr>
+            <td>TLS</td>
+            <td><code>--tls</code> now defaults the port to 443 instead of leaving it at 80. <code>--tls-insecure</code> accepts the self-signed certificate most Axis cameras ship with.</td>
+          </tr>
+          <tr>
+            <td>ACAP listings</td>
+            <td>Only CamStreamer-family apps carried an <code>appId</code>, so third-party ACAPs were hidden from <code>axis info</code>. Use <code>--all-acaps</code> for the full inventory; counts are labelled explicitly.</td>
+          </tr>
+          <tr>
+            <td>Error handling</td>
+            <td>Every command routes through one error path — clean messages, no stack traces, correct exit codes. Transport, TLS and schema failures explain the cause and the fix.</td>
+          </tr>
+          <tr>
+            <td>Input validation</td>
+            <td>Non-numeric ports, channels and service IDs are rejected up front rather than stored as <code>null</code>.</td>
+          </tr>
+          <tr>
+            <td>Fleet checks</td>
+            <td>Cameras are probed in parallel with a per-request timeout, so one dead camera no longer stalls the whole report.</td>
+          </tr>
+          <tr>
+            <td>Discoverability</td>
+            <td>Mistyped commands get a "did you mean" suggestion plus usage. <code>axis ptz list</code> works as an alias for <code>presets</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 
 <section id="install">
   <div class="wrap">
     <h2>Install</h2>
-    <pre><code>npm install
+    <p class="section-note">Requires Node 18 or newer. Two routes — pick the one that suits you.</p>
+
+    <h3>Double-click installer</h3>
+    <p>
+      Download <code>axis-cli-v1.1.2-installer.zip</code> from the
+      <a href="https://github.com/kotyzap/axis-cli/releases/latest">latest release</a>, unzip it, then:
+    </p>
+    <ul>
+      <li><strong>macOS</strong> — run <code>install.command</code>. Unsigned, so the first time
+          right-click → <strong>Open</strong> rather than double-clicking.</li>
+      <li><strong>Windows</strong> — run <code>install.bat</code>. If you hit <code>EPERM</code>,
+          right-click → <strong>Run as administrator</strong>.</li>
+    </ul>
+    <p>
+      Both scripts check Node, install dependencies, build, install <code>axis</code> globally, and
+      verify it — then print your next commands.
+    </p>
+
+    <h3>From source</h3>
+    <div class="code-block">
+      <pre><code><span class="k">git clone</span> <span class="s">https://github.com/kotyzap/axis-cli.git</span>
+<span class="k">cd</span> axis-cli
+npm ci
 npm run build
-npm link          # makes the `axis` command available globally</code></pre>
-    <p>Or run it directly without linking: <code>node dist/index.js &lt;command&gt;</code></p>
+npm install <span class="f">-g</span> .
+axis <span class="f">--version</span></code></pre>
+      <button class="copy-btn" type="button">Copy</button>
+    </div>
+    <div class="callout">
+      <strong>Use <code>npm install -g .</code>, not <code>npm link</code>.</strong>
+      <code>npm link</code> only symlinks back to the project folder, so <code>axis</code> breaks if that
+      folder moves, is deleted, or sits on an external drive that isn't mounted.
+      <code>npm install -g .</code> copies the built files into Node's global folder — self-contained and
+      unaffected by reboots. To run without installing at all, use
+      <code>node dist/index.js &lt;command&gt;</code> from the project directory.
+    </div>
+    <div class="callout">
+      <strong>If <code>axis</code> reports "permission denied":</strong> the compiled entry point lost its
+      executable bit — <code>tsc</code> doesn't set one. Run <code>npm run build</code> again (the
+      <code>postbuild</code> step fixes the mode), or set it directly with
+      <code>chmod +x dist/index.js</code>.
+    </div>
+    <div class="callout">
+      <strong>New to the command line?</strong>
+      <a href="axis-cli-101.html">axis-cli 101</a> walks through installing, finding your camera on the
+      network, adding it, and where the username and password actually get asked for.
+    </div>
+    <p>
+      Source and tagged releases are on <a href="https://github.com/kotyzap/axis-cli">GitHub</a> —
+      see the <a href="https://github.com/kotyzap/axis-cli/releases">releases page</a> for
+      downloadable builds, or the
+      <a href="https://github.com/kotyzap/axis-cli/blob/main/CHANGELOG.md">changelog</a>
+      for what changed in 1.1.2.
+    </p>
   </div>
 </section>
 
@@ -310,6 +663,11 @@ npm link          # makes the `axis` command available globally</code></pre>
   <div class="wrap">
     <h2>Resources</h2>
     <ul class="resource-list">
+      <li>
+        <a href="axis-cli-101.html">axis-cli 101 tutorial
+          <small>Install, add your first camera, first commands</small>
+        </a>
+      </li>
       <li>
         <a href="img/Axis_CLI_Unified_Control.pdf">Unified Control overview (PDF)
           <small>One-page summary of the tool</small>
@@ -327,18 +685,107 @@ npm link          # makes the `axis` command available globally</code></pre>
       </li>
       <li>
         <a href="img/axis-automation-sample.sh">Automation sample (SH)
-          <small>Example cron-ready health check script</small>
+          <small>Cron-ready fleet check and overlay updater</small>
+        </a>
+      </li>
+      <li>
+        <a href="https://github.com/kotyzap/axis-cli">Source on GitHub
+          <small>Full source, issues, and releases</small>
+        </a>
+      </li>
+      <li>
+        <a href="https://github.com/kotyzap/axis-cli/blob/main/README.md">Command reference
+          <small>Every command and flag, documented</small>
         </a>
       </li>
     </ul>
   </div>
 </section>
 
+</main>
+
 <footer>
   <div class="wrap">
     <p>axis-cli · CLI for controlling Axis IP cameras — VAPIX, CamOverlay, CamStreamer, CamSwitcher, and fleet health.</p>
+    <p>
+      <a href="axis-cli-101.html">Tutorial</a> ·
+      <a href="https://github.com/kotyzap/axis-cli">GitHub</a> ·
+      <a href="https://github.com/kotyzap/axis-cli/releases">Releases</a> ·
+      <a href="https://github.com/kotyzap/axis-cli/issues">Issues</a> ·
+      ISC license
+    </p>
   </div>
 </footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var toggle = document.getElementById('themeToggle');
+
+  // Light is the default; honour a saved choice, then the OS preference.
+  var saved = null;
+  try { saved = localStorage.getItem('axis-cli-theme'); } catch (e) {}
+  if (saved === 'dark' || saved === 'light') {
+    root.setAttribute('data-theme', saved);
+  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    root.setAttribute('data-theme', 'dark');
+  }
+
+  function syncLabel() {
+    var isDark = root.getAttribute('data-theme') === 'dark';
+    var label = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+    toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('title', label);
+  }
+  syncLabel();
+
+  toggle.addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('axis-cli-theme', next); } catch (e) {}
+    syncLabel();
+  });
+
+  // Copy buttons: copy the command text, not the syntax-highlight markup.
+  document.querySelectorAll('.copy-btn').forEach(function (btn) {
+    function flash(label) {
+      btn.textContent = label;
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1600);
+    }
+
+    // execCommand still works where the async Clipboard API is unavailable or
+    // blocked (no transient activation, non-secure origin, permission denied).
+    function legacyCopy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      var okCopy = false;
+      try { okCopy = document.execCommand('copy'); } catch (e) { okCopy = false; }
+      document.body.removeChild(ta);
+      return okCopy;
+    }
+
+    btn.addEventListener('click', function () {
+      var code = btn.parentElement.querySelector('code');
+      if (!code) return;
+      var text = code.innerText;
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { flash('Copied'); },
+          function () { flash(legacyCopy(text) ? 'Copied' : 'Press ⌘C'); }
+        );
+      } else {
+        flash(legacyCopy(text) ? 'Copied' : 'Press ⌘C');
+      }
+    });
+  });
+})();
+</script>
 
 </body>
 </html>
