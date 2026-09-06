@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "game",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-24",
+
+  // Static hosting. public/index.html is the game; the Worker only runs
+  // for paths that do not match a file, plus /api/* which is forced below.
+  "assets": {
+    "directory": "./public/",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // The live D1 database. This is NOT a secret — it only names a database
+  // that your Cloudflare account alone can reach. A placeholder here fails
+  // the deploy with "binding DB of type d1 must have a valid database_id"
+  // (error 10021), because wrangler validates bindings before publishing.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "deadhead-db",
+      "database_id": "0cb161d0-763f-4696-b9d6-ce9e795c7013"
+    }
+  ],
+
+  "observability": { "enabled": true }
+}

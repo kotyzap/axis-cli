@@ -1,0 +1,36 @@
+{
+  "name": "axis-cli",
+  "version": "1.4.0",
+  "description": "CLI for controlling Axis IP cameras \u2014 VAPIX, CamOverlay, CamStreamer, CamSwitcher, fleet health, and AXIS OS upgrade preflight",
+  "main": "dist/index.js",
+  "bin": {
+    "axis": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/*.test.js\"",
+    "postbuild": "node -e \"require('fs').chmodSync('dist/index.js', 0o755); require('fs').mkdirSync('dist/preflight',{recursive:true}); require('fs').copyFileSync('src/preflight/rules.json','dist/preflight/rules.json')\"",
+    "start": "node dist/index.js",
+    "sync:rules": "node scripts/sync-rules.mjs"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "camstreamerlib": "^4.0.27",
+    "chalk": "^4.1.2",
+    "fast-xml-parser": "^5.3.6",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ]
+}

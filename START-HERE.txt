@@ -1,0 +1,88 @@
+axis-cli v1.3.0 — terminal control for Axis IP cameras
+======================================================
+
+INSTALL
+-------
+
+  macOS      Right-click  install.command  ->  Open      (then confirm)
+  Windows    Double-click install.bat
+             (if it fails: right-click -> Run as administrator)
+
+Plain double-clicking install.command on macOS is blocked because the script
+isn't signed by an Apple developer account. Right-click -> Open works, and you
+only have to do it once.
+
+The installer checks for Node.js 18+, installs dependencies, builds, installs
+the `axis` command globally, and verifies it. If Node is missing it tells you
+exactly how to install it.
+
+
+NO NODE.JS YET?
+---------------
+
+  macOS      brew install node
+  Windows    winget install OpenJS.NodeJS.LTS
+
+On Windows, close and reopen the terminal afterwards so the new PATH takes
+effect, then run install.bat again.
+
+
+DON'T KNOW YOUR CAMERA'S IP YET?
+--------------------------------
+
+  axis discovery                scan the local network and list Axis cameras found
+  axis discovery --add          scan, then interactively ask to save each one found
+
+THEN ADD YOUR FIRST CAMERA
+--------------------------
+
+  axis camera add q1656 --ip 192.168.1.50 --user root
+
+Leave --pass off and it prompts you for the password. Nothing appears on
+screen while you type - that's intentional, not a frozen terminal.
+
+  axis camera test q1656      confirm it connects and authenticates
+  axis info q1656             model, firmware, serial, installed ACAPs
+  axis fleet health           check every saved camera at once
+  axis events topics q1656    what events this camera publishes
+  axis events watch q1656     stream them live (Ctrl+C to stop)
+  axis --help                 all commands
+
+The camera's username is the --user flag (default: root). The password is the
+only thing you're prompted for, and only once - it's saved to
+~/.axis-cli/config.json (Windows: %USERPROFILE%\.axis-cli\config.json) with
+permissions 0600, and survives reboots.
+
+
+DOES IT KEEP RUNNING AFTER A REBOOT?
+------------------------------------
+
+axis-cli isn't a background service - you type a command, it talks to the
+camera, prints the result, and exits. What persists is the `axis` command
+itself and your saved camera profiles. Neither needs reinstalling after a
+restart.
+
+One exception: if your Node.js came from nvm, a global install belongs to that
+one Node version. Switch versions and `axis` appears to vanish - just re-run
+the installer.
+
+
+DOCUMENTATION
+-------------
+
+  Tutorial     https://kotyzap.github.io/axis-cli/axis-cli-101.html
+  Home         https://kotyzap.github.io/axis-cli/
+  Reference    README.md (in this folder)
+  Changes      CHANGELOG.md
+  Source       https://github.com/kotyzap/axis-cli
+
+
+UNINSTALL
+---------
+
+  npm uninstall -g axis-cli
+
+Your camera profiles in ~/.axis-cli/config.json are left untouched. Delete
+that file too if you want a completely clean slate.
+
+ISC license.

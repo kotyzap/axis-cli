@@ -1,0 +1,1401 @@
+{
+  "$schema": "./rules.schema.json",
+  "rulesetVersion": "3.0.0",
+  "generated": "2026-09-06",
+  "owner": "Pavel Kotyza · 4XS.dev",
+  "sources": {
+    "axis-os": {
+      "title": "AXIS OS — Upcoming breaking changes",
+      "url": "https://help.axis.com/en-us/axis-os#upcoming-breaking-changes"
+    }
+  },
+  "tiers": {
+    "A": {
+      "label": "Blocks or rolls back the upgrade",
+      "blurb": "The upgrade does not warn you and proceed. It fails and the device rolls back to the previous AXIS OS."
+    },
+    "B": {
+      "label": "Silently breaks an app after a successful upgrade",
+      "blurb": "The camera comes up on OS 13. The application on it does not work, or crashes."
+    },
+    "C": {
+      "label": "Breaks your integration, not the camera",
+      "blurb": "The camera is fine. Your VMS, middleware, or script calling it is not."
+    }
+  },
+  "detectionMethods": {
+    "model-list": "Deterministic lookup of the product model against a published list. No probing beyond reading the model name.",
+    "vapix-param": "Read a VAPIX parameter or CGI response from the live camera.",
+    "acap-manifest": "Enumerate installed ACAPs and inspect each manifest.",
+    "eap-binary": "Requires static inspection of the .eap package or its binaries. Not obtainable from a running camera by read-only VAPIX.",
+    "client-side": "Cannot be detected on the camera. The exposure lives in your client, VMS, or scripts.",
+    "none": "Behavioural or informational. Nothing to detect."
+  },
+  "verificationLegend": {
+    "verified": "Detection run against a bench camera and confirmed.",
+    "designed": "Detection designed against documentation, not yet run on hardware.",
+    "open": "Detection approach not yet settled."
+  },
+  "rules": [
+    {
+      "id": "A1",
+      "tier": "A",
+      "version": "13.0",
+      "title": "ACAP manifest compatibility declaration is mandatory",
+      "summary": "Every installed ACAP must declare which AXIS OS major versions it is compatible with. An application without the declaration is treated as incompatible.",
+      "impact": "The upgrade fails and the device rolls back. Axis's own guidance is that the user must remove the application before upgrading.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "One call: axis-cgi/applications/list.cgi. On AXIS OS 12.11 each <application> carries <CompatibleOsVersions><VersionRange><Min>..</Min><Max>..</Max></VersionRange>. Flag any application whose element is absent, or whose Max is below 13. No manifest fetch, no .eap.",
+        "feasibility": "trivial",
+        "status": "verified"
+      },
+      "source": "axis-os",
+      "benchNote": "Confirmed on Q1656/12.11.77. objectanalytics 1.26.205 declares Max=12 — that camera reverts on an OS 13 upgrade unless the app is updated first. Four locally built apps (camwallet, fourxs_paddleocr, needle_mcp, smart_warehouse) carry no CompatibleOsVersions element at all. On M1137/10.12.300 list.cgi omits the element entirely, so absence there means 'old firmware', not 'incompatible' — the rule must branch on OS version before it judges."
+    },
+    {
+      "id": "A2",
+      "tier": "A",
+      "version": "13.0",
+      "title": "Rollback on ACAP re-installation failure during upgrade",
+      "summary": "During the OS upgrade every installed ACAP is re-installed. If any one of them errors, AXIS OS initiates a rollback of the whole upgrade.",
+      "impact": "This is the rule the product exists for. One stale application on one camera reverts that camera, with no per-camera explanation of which application caused it.",
+      "detection": {
+        "method": "acap-manifest",
+        "sketch": "Composite over A1, A4, A5 and A7. Now cheap: A1 and A4 come from one list.cgi response, A5 from one parameter read.",
+        "feasibility": "composite",
+        "status": "designed"
+      },
+      "hero": true,
+      "source": "axis-os"
+    },
+    {
+      "id": "A3",
+      "tier": "A",
+      "version": "13.0",
+      "title": "ACAP manifest schema v2 enforced; package.conf removed",
+      "summary": "Applications must use manifest schema v2 to declare their access rights. package.conf is no longer supported — those applications are handled by an older ACAP framework that is gone. Applications are restricted to running as their own dynamically created user or as the sdk user.",
+      "impact": "A pre-schema-v2 or package.conf application will not re-install, which triggers A2.",
+      "detection": {
+        "method": "acap-manifest",
+        "sketch": "Manifest schema version is NOT exposed by list.cgi, and no read-only manifest endpoint responded on either bench unit. Still needs the .eap. A missing CompatibleOsVersions element on modern firmware is suggestive but not proof.",
+        "feasibility": "easy-if-manifest-readable",
+        "status": "open",
+        "blockedBy": "Q2 — .eap inspection"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "A4",
+      "tier": "A",
+      "version": "13.0",
+      "title": "Unsigned ACAPs no longer permitted",
+      "summary": "Only signed ACAP applications are accepted. The AllowUnsigned escape hatch is removed.",
+      "impact": "Any unsigned application currently running on a camera that had AllowUnsigned set will fail re-installation, which triggers A2.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "SignatureStatus attribute per application in list.cgi. \"Signed\" passes; \"Unknown\" or \"Unsigned\" is a rollback candidate.",
+        "feasibility": "trivial",
+        "status": "verified"
+      },
+      "apisRemoved": [
+        "/axis-cgi/applications/config.cgi?action=set&name=AllowUnsigned"
+      ],
+      "source": "axis-os",
+      "benchNote": "Confirmed on Q1656/12.11.77: SignatureStatus present on every application. Vendor apps report Signed; four locally built apps report Unknown. Absent on M1137/10.12.300."
+    },
+    {
+      "id": "A5",
+      "tier": "A",
+      "version": "13.0",
+      "title": "Y2038 — 64-bit time_t ABI break on 32-bit products",
+      "summary": "AXIS OS 13 moves to 64-bit time_t and 64-bit time APIs in glibc and the kernel. On 32-bit products this is an ABI break: ACAP applications and internal services must be recompiled.",
+      "impact": "On the listed models, any ACAP not rebuilt against the new ABI must be removed before the upgrade or the device rolls back.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read Properties.System.Architecture. armv7hf is 32-bit and exposed to the Y2038 ABI break; aarch64 is not. Keep the published model list as a cross-check only — the architecture parameter is ground truth and covers models the list omits.",
+        "feasibility": "trivial",
+        "status": "verified"
+      },
+      "models32bit": [
+        "AXIS A1210",
+        "AXIS A1210-B",
+        "AXIS A1214",
+        "AXIS A1610",
+        "AXIS A1610-B",
+        "AXIS A1710-B",
+        "AXIS A1810-B",
+        "AXIS A1811",
+        "AXIS A9210",
+        "AXIS C1210-E",
+        "AXIS C1211-E",
+        "AXIS C1510",
+        "AXIS C1511",
+        "AXIS C1610-VE",
+        "AXIS C8110",
+        "AXIS C8210",
+        "AXIS F9104-B",
+        "AXIS F9111",
+        "AXIS F9114",
+        "AXIS F9114-B",
+        "AXIS I8016-LVE",
+        "AXIS M3057-PLR Mk II",
+        "AXIS M4215-LV",
+        "AXIS M5000",
+        "AXIS M5000-G",
+        "AXIS M5074",
+        "AXIS M5075",
+        "AXIS M5075-G",
+        "AXIS M7104",
+        "AXIS M7116",
+        "AXIS P3818-PVE",
+        "AXIS P3925-LRE",
+        "AXIS P3925-R",
+        "AXIS P3935-LR",
+        "AXIS P5654-E",
+        "AXIS P5654-E Mk II",
+        "AXIS P5655-E",
+        "AXIS P5676-LE",
+        "AXIS P7304",
+        "AXIS P7316",
+        "AXIS Q6074",
+        "AXIS Q6074-E",
+        "AXIS Q6075",
+        "AXIS Q6075-E",
+        "AXIS Q6075-S",
+        "AXIS Q6075-SE",
+        "AXIS Q6078-E",
+        "AXIS Q6135-LE",
+        "AXIS Q6225-LE",
+        "AXIS Q6315-LE",
+        "AXIS Q6318-LE",
+        "AXIS Q8615-E",
+        "AXIS Q8752-E",
+        "AXIS Q8752-E Mk II",
+        "AXIS V5925",
+        "AXIS V5938",
+        "D201-S XPT Q6075",
+        "ExCam XPT Q6075"
+      ],
+      "source": "axis-os",
+      "benchNote": "Q1656 reports aarch64 (safe). M1137 reports armv7hf (exposed) and does NOT appear on the published 32-bit model list — the model list alone would have missed it. This replaces the model-list lookup as the primary detection."
+    },
+    {
+      "id": "A6",
+      "tier": "A",
+      "version": "13.0",
+      "title": "Install and uninstall script rules tightened",
+      "summary": "Scripts must have executable permission, must complete within 5 minutes, shell scripts must start with #!/bin/sh, umask is set to 022, and a non-zero exit from the post-install script fails the installation.",
+      "impact": "A script that used to pass sloppily now fails the re-installation, which triggers A2.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Static inspection of the .eap where the package is obtainable. Not detectable from a running camera.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "related": [
+        "L14"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "A7",
+      "tier": "A",
+      "version": "13.0",
+      "title": "ACAP installation and execution on SD card no longer supported",
+      "summary": "Support for installing and running ACAP applications from the SD card is removed entirely.",
+      "impact": "An SD-card-resident application will not come back after the upgrade, and its re-installation failure triggers A2.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read install location per application from the application list.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "A8",
+      "tier": "A",
+      "version": "13.0",
+      "title": "DLPU usage must be declared in the ACAP manifest",
+      "summary": "An application using the deep-learning processing unit must declare that use in its manifest.",
+      "impact": "An undeclared analytics application is a re-installation risk, and a rollback candidate under A2.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "list.cgi returns <Resources><Resource name=\"DeepLearningProcessor\" used=\"Yes|No\"/></Resources> per application. Compare the declaration against actual DLPU use.",
+        "feasibility": "easy",
+        "status": "verified"
+      },
+      "source": "axis-os",
+      "benchNote": "Confirmed machine-readable on Q1656/12.11.77 — no manifest needed. Every app on the bench unit reported used=No, so a positive case is still untested."
+    },
+    {
+      "id": "B1",
+      "tier": "B",
+      "version": "13.0",
+      "title": ".larod model format removed — .tflite only",
+      "summary": "The .larod model container is gone. Models must be .tflite.",
+      "impact": "An analytics application shipping .larod models installs but cannot load its model.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Inspect model files inside the analytics ACAP.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B2",
+      "tier": "B",
+      "version": "13.0",
+      "title": "larod API versions 1 and 2 removed — v3 only",
+      "summary": "Only larod version 3 is supported. Applications on v1 or v2 must be migrated.",
+      "impact": "Inference fails at runtime after an otherwise clean upgrade.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Inspect the application's larod linkage or SDK version.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B3",
+      "tier": "B",
+      "version": "13.0",
+      "title": "Prevent stack execution",
+      "summary": "A process with an executable stack crashes immediately with a segmentation fault.",
+      "impact": "The application installs and then dies on start. Hardest failure in the set to attribute, because nothing in the logs points at the cause.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Read the GNU_STACK program header of the application's binaries. Requires the .eap; not obtainable read-only from a camera.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B4",
+      "tier": "B",
+      "version": "13.0",
+      "title": "Message-Broker removed, replaced by the device data hub API",
+      "summary": "The message-broker interface is gone. The replacement device data hub API is available from ACAP SDK 12.10.",
+      "impact": "Applications publishing or subscribing over message-broker lose their event path silently.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Detect message-broker usage in the package; alternatively maintain a known-app list.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B5",
+      "tier": "B",
+      "version": "13.0",
+      "title": "AXIS Motion Guard, Fence Guard and Loitering Guard removed",
+      "summary": "The three guard applications are removed. AXIS Object Analytics is the replacement.",
+      "impact": "Two failures at once: the analytic stops, and anything subscribing to its VAPIX events or endpoints stops with it.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Match installed application names against the removed set.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B6",
+      "tier": "B",
+      "version": "13.0",
+      "title": "AXIS Removed Object Detection removed",
+      "summary": "The application is removed from AXIS OS 13.",
+      "impact": "Same shape as B5 — analytic and its event consumers both stop.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Match installed application names.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B7",
+      "tier": "B",
+      "version": "13.0",
+      "title": "Camera Tampering detector removed",
+      "summary": "The MotionRegionDetector / Motion tampering event is removed. AXIS Image Health Analytics is the replacement.",
+      "impact": "Event rules and VMS triggers bound to the tampering event stop firing.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read the configured event rules and flag any bound to the removed detector.",
+        "feasibility": "medium",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B8",
+      "tier": "B",
+      "version": "13.0",
+      "title": "Deprecated VDO functions removed",
+      "summary": "vdo_frame_get_is_last_buffer, vdo_frame_get_fd and vdo_frame_get_opaque are removed. Crop settings, deprecated since 11.11, are no longer available to ACAPs.",
+      "impact": "Video-pipeline applications built against the old functions fail to run.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Symbol inspection of the application binary.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "apisRemoved": [
+        "vdo_frame_get_is_last_buffer",
+        "vdo_frame_get_fd",
+        "vdo_frame_get_opaque"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "B9",
+      "tier": "B",
+      "version": "13.0",
+      "title": "VDO_TIMESTAMP uint16_t support removed",
+      "summary": "Only uint32_t is supported for VDO_TIMESTAMP.",
+      "impact": "Timestamp handling breaks in applications still using the 16-bit form.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Source or binary inspection. Practically a rebuild-advisory rather than a detection.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B10",
+      "tier": "B",
+      "version": "13.0",
+      "title": "Overlay enums removed from the VDO ACAP API",
+      "summary": "The overlay enumerations are removed from the VDO ACAP API.",
+      "impact": "Overlay-drawing applications built against them fail to compile or run.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Source or binary inspection.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B11",
+      "tier": "B",
+      "version": "13.0",
+      "title": "Loopback interfaces reduced from 12 to 3",
+      "summary": "Only 127.0.0.1, 127.0.0.4 and 127.0.0.12 remain.",
+      "impact": "An ACAP binding any other loopback address fails to bind after the upgrade.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Configuration or binary inspection for hardcoded loopback addresses.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "B12",
+      "tier": "B",
+      "version": "12.0",
+      "title": "Root privileges for ACAP applications removed",
+      "summary": "Root-privileged access for ACAP applications was removed indefinitely, with no way to re-enable it.",
+      "impact": "Applications that need root do not work. This includes on-camera VPN clients — Tailscale, ZeroTier, WireGuard, OpenVPN, IPsec — which are the usual real-world casualties.",
+      "detection": {
+        "method": "acap-manifest",
+        "sketch": "Manifest privilege level, plus a known-app list for the VPN cases.",
+        "feasibility": "medium",
+        "status": "designed"
+      },
+      "note": "Already in force since AXIS OS 12.0. A fleet still on 11.x meets this and everything in 13 at the same time.",
+      "source": "axis-os"
+    },
+    {
+      "id": "B13",
+      "tier": "B",
+      "version": "12.0",
+      "title": "OpenSSL 1.1.1 support removed",
+      "summary": "Applications must link OpenSSL 3.x.",
+      "impact": "TLS calls from the application fail.",
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Linked OpenSSL version in the package.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "C24",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Password complexity enforcement — and it cannot be disabled",
+      "summary": "Password complexity enforcement is enabled by default for new and edited accounts created via SSH, VAPIX, ONVIF and SNMP, and it applies to the web interface too. Profile 1 requires 15 characters; Profile 2 requires 12 characters plus numbers, capitals and specials. Axis states the behaviour cannot be disabled.",
+      "impact": "This is the rule that breaks automated onboarding. Middleware or a VMS that provisions cameras with a standard non-compliant service password fails at the account-creation step — on every new or reset device, every time, with no switch to turn off. Existing accounts are the quiet half: they are not re-validated and keep working, so the failure only shows up on new and reset devices, which is exactly where an integrator is least likely to be watching. Axis is explicit that existing accounts need adjusting manually.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not detectable on the camera — the exposure is in the provisioning side. The useful check is whether the onboarding script or VMS pushes a password meeting the 15-character or 12-character-plus-complexity profile. Worth reporting per camera which profile the device is set to.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "note": "Ordered first in Tier C because it has the widest blast radius of anything here for anyone who onboards cameras programmatically. It is not a camera failure, which is why it sits in C rather than A.",
+      "source": "axis-os"
+    },
+    {
+      "id": "C1",
+      "tier": "C",
+      "version": "13.0",
+      "title": "HTTPS-only becomes the factory default; HTTP port 80 disabled",
+      "summary": "System.BoaGroupPolicy.admin, .operator and .viewer move from both to https. Port 80 is disabled by default after a factory reset.",
+      "impact": "Middleware, scripts and VMS integrations calling http:// stop working. Note the wording carefully: this is the factory-default state, so an upgraded device that keeps its configuration is not necessarily affected — a reset one is.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read System.BoaGroupPolicy.admin/.operator/.viewer.",
+        "feasibility": "trivial",
+        "status": "verified"
+      },
+      "paramsChanged": [
+        {
+          "name": "System.BoaGroupPolicy.admin",
+          "from": "both",
+          "to": "https"
+        },
+        {
+          "name": "System.BoaGroupPolicy.operator",
+          "from": "both",
+          "to": "https"
+        },
+        {
+          "name": "System.BoaGroupPolicy.viewer",
+          "from": "both",
+          "to": "https"
+        }
+      ],
+      "source": "axis-os",
+      "benchNote": "Both bench units report both on all three roles — neither has moved to https-only."
+    },
+    {
+      "id": "C2",
+      "tier": "C",
+      "version": "12.1",
+      "title": "Basic authentication for HTTPS connections",
+      "summary": "AXIS OS 12.1 introduced a new authentication policy mode, described by Axis as “Recommended”, which uses basic authentication over HTTPS.",
+      "impact": "Clients hardcoded to digest may need to change. Whether digest stops working depends on which policy the device is actually set to.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read Network.HTTP.AuthenticationPolicy. Observed: recommended (12.11) and basic (10.12). Confirm by attempting digest and basic and reporting which the device accepts.",
+        "feasibility": "easy",
+        "status": "verified"
+      },
+      "confidence": "verified",
+      "correctionNote": "The plan said digest-over-HTTPS stops working by default from 12.1; ruleset 2.x softened that to 'the source doesn't say so'. Bench evidence lands between the two: on Q1656/12.11.77 (policy=recommended) and M1137/10.12.300 (policy=basic), digest returned 401 and basic-over-HTTPS returned 200. Digest is refused in practice under both policies observed — the plan's instinct was right, but the mechanism is the AuthenticationPolicy parameter, not a blanket 12.1 default change. A client hardcoded to digest fails today, before OS 13.",
+      "source": "axis-os",
+      "benchNote": "digest 401 / basic 200 on both units. Any scanner must negotiate auth rather than assume digest."
+    },
+    {
+      "id": "C3",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Signed Video enabled by default",
+      "summary": "Image.I0.MPEG.SignedVideo.Enabled changes from no to yes.",
+      "impact": "Axis notes a slight bitrate increase in specific situations. A storage and bandwidth planning item, not a failure.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read Image.I0.MPEG.SignedVideo.Enabled. Absent on older firmware — treat absence as not-applicable, not as 'no'.",
+        "feasibility": "trivial",
+        "status": "verified"
+      },
+      "paramsChanged": [
+        {
+          "name": "Image.I0.MPEG.SignedVideo.Enabled",
+          "from": "no",
+          "to": "yes"
+        }
+      ],
+      "source": "axis-os",
+      "benchNote": "Q1656/12.11.77 reports no. M1137/10.12.300 refuses the parameter — it does not exist on that firmware."
+    },
+    {
+      "id": "C4",
+      "tier": "C",
+      "version": "13.0",
+      "title": "UPnP discovery removed",
+      "summary": "Network.UPnP.Enabled is removed. UPnP was already disabled by default in 12.1.",
+      "impact": "Discovery tooling that finds cameras over UPnP stops finding them.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read Network.UPnP.Enabled; absence means already removed.",
+        "feasibility": "trivial",
+        "status": "verified"
+      },
+      "paramsRemoved": [
+        "Network.UPnP.Enabled"
+      ],
+      "source": "axis-os",
+      "benchNote": "Both units report no — already disabled, consistent with the 12.1 change."
+    },
+    {
+      "id": "C5",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Recording system rewritten",
+      "summary": "Recording IDs are capped at 24 hours with a 1 hour default and a continuous sequence now spans multiple IDs. record/list.cgi returns more IDs. exportrecording.cgi is extended for trailing IDs. H.264 header timestamps are not implemented in the new system. Ongoing recordings cannot be removed directly — they must be stopped first. Recording files moved to a new on-disk location with a new naming scheme. RTSP failoverrecordinglength is no longer supported. EstimatedFileSize is removed from the export API.",
+      "impact": "The largest single item on the page for anyone with a recording integration. Several independent ways to break at once.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Cannot be detected on the camera. Exposure lives in whatever calls the recording APIs.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "apisChanged": [
+        "axis-cgi/record/list.cgi",
+        "axis-cgi/record/export/exportrecording.cgi"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C6",
+      "tier": "C",
+      "version": "13.0",
+      "title": "record.cgi and stop.cgi removed",
+      "summary": "Replaced by the event system recording, or record/continuous/addconfiguration.cgi.",
+      "impact": "Any script starting or stopping a recording directly stops working.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera. Grep your own integration.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "apisRemoved": [
+        "record.cgi",
+        "stop.cgi"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C7",
+      "tier": "C",
+      "version": "13.0",
+      "title": "StreamCache.Size removed on non-video products",
+      "summary": "root.StreamCache.Size is removed on the listed non-video products.",
+      "impact": "Configuration tooling touching the parameter on these models errors.",
+      "detection": {
+        "method": "model-list",
+        "sketch": "Model list lookup, same shape as A5.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "root.StreamCache.Size"
+      ],
+      "modelsAffected": [
+        "AXIS A1210",
+        "AXIS A1610",
+        "AXIS A9210",
+        "AXIS C1110-E",
+        "AXIS C1111-E",
+        "AXIS C1210-E",
+        "AXIS C1211-E",
+        "AXIS C1310-E Mk II",
+        "AXIS C1410 Mk II",
+        "AXIS C1510",
+        "AXIS C1511",
+        "AXIS C1610-VE",
+        "AXIS C1710",
+        "AXIS C1720",
+        "AXIS C6110",
+        "AXIS C8110",
+        "AXIS C8210",
+        "AXIS D3110 Mk II",
+        "AXIS D4100-VE Mk II",
+        "AXIS D4200-VE",
+        "AXIS XC1311-E"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C8",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Bulk VAPIX parameter removals — SNMP",
+      "summary": "The legacy SNMP parameter group is removed.",
+      "impact": "SNMP configuration through param.cgi stops working. Configure via the current API instead.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report which of the removed parameters are currently set to a non-default value — those are the ones somebody is actually using.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "SNMP.DSCP",
+        "SNMP.Enabled",
+        "SNMP.EngineBoots",
+        "SNMP.InitialUserPasswd",
+        "SNMP.InitialUserPasswdSet",
+        "SNMP.TransportProtocol",
+        "SNMP.V1",
+        "SNMP.V1ReadCommunity",
+        "SNMP.V1WriteCommunity",
+        "SNMP.V2c",
+        "SNMP.V3",
+        "SNMP.NTCIP.Enabled",
+        "SNMP.Trap.Enabled",
+        "SNMP.Trap.T0.Address",
+        "SNMP.Trap.T0.Community",
+        "SNMP.Trap.T0.AuthFail.Enabled",
+        "SNMP.Trap.T0.ColdStart.Enabled",
+        "SNMP.Trap.T0.LinkUp.Enabled",
+        "SNMP.Trap.T0.WarmStart.Enabled"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C9",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Bulk VAPIX parameter removals — Layout",
+      "summary": "The Layout parameter group is removed.",
+      "impact": "Low real-world exposure. Most integrators never touch these.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Same non-default-value approach as C8.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "Layout.ViewerIE",
+        "Layout.ViewerOther",
+        "Layout.PlainConfigEnabled",
+        "Layout.H264InstallationEnabled",
+        "Layout.AACInstallationEnabled",
+        "Layout.EnableBasicSetup",
+        "Layout.ShowVideoFormatDropDown",
+        "Layout.DefaultStreamProfile",
+        "Layout.ShowPaletteSelector",
+        "Layout.ShowRelCrossEnabled",
+        "Layout.DefaultJoystickMode"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C10",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Bulk VAPIX parameter removals — Storage group",
+      "summary": "Only DiskID, Enabled, ExtraMountOptions, FriendlyName and MountOnBoot remain in the Storage.Sn group.",
+      "impact": "Storage provisioning scripts that set the removed parameters error out.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report removed parameters currently at non-default values.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "Storage.MountDir",
+        "Storage.Sn.AutoRepair",
+        "Storage.Sn.CleanupLevel",
+        "Storage.Sn.CleanupMaxAge",
+        "Storage.Sn.CleanupPolicyActive",
+        "Storage.Sn.DeviceNode",
+        "Storage.Sn.FileSystem",
+        "Storage.Sn.Locked",
+        "Storage.Sn.MountPointPermissions"
+      ],
+      "paramsRetained": [
+        "Storage.Sn.DiskID",
+        "Storage.Sn.Enabled",
+        "Storage.Sn.ExtraMountOptions",
+        "Storage.Sn.FriendlyName",
+        "Storage.Sn.MountOnBoot"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C11",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Bulk VAPIX parameter removals — legacy streaming",
+      "summary": "A set of legacy image and streaming parameters is removed.",
+      "impact": "Stream-profile provisioning scripts break.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report removed parameters currently at non-default values.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "Image.RFCCompliantMulticastEnabled",
+        "Image.ReferrersEnabled",
+        "Image.Referrers",
+        "Image.IX.MaxFrameSize",
+        "Image.IX.MPEG.ConfigHeaderInterval",
+        "Image.IX.MPEG.ICount",
+        "Image.IX.MPEG.Complexity",
+        "Audio.DSCP",
+        "Network.RTSP.AuthenticateOverHTTP"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C12",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Bulk VAPIX parameter removals — time and privacy mask",
+      "summary": "Time.POSIXTimeZone and Time.DST.Enabled are removed. Image.PrivacyMaskType is removed, replaced by root.Properties.PrivacyMask.PrivacyMask.",
+      "impact": "Time provisioning and privacy-mask configuration scripts break.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report removed parameters currently at non-default values.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "Time.POSIXTimeZone",
+        "Time.DST.Enabled",
+        "Image.PrivacyMaskType"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C13",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Legacy image rotation parameters removed",
+      "summary": "Image.I#.Appearance.Rotation and Image.I#.Appearance.AutoRotationEnabled are removed, replaced by ImageSource.I#.Rotation. ImageSource.I#.SourceRotation now reports yes on all supported products.",
+      "impact": "Rotation is a common provisioning step, which makes this a more likely break than most of the bulk removals.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report the removed parameters and their current values.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "Image.I#.Appearance.Rotation",
+        "Image.I#.Appearance.AutoRotationEnabled"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C14",
+      "tier": "C",
+      "version": "13.0",
+      "title": "HTTP network authentication parameters removed",
+      "summary": "Network.HTTP.AuthenticationPolicy and Network.HTTP.AuthenticationWithQop are removed, replaced by the Virtual Host VAPIX API. RTSP and RTSPS authentication modes are hardcoded.",
+      "impact": "Authentication provisioning has to move to the new API.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report the parameters and their current values.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "Network.HTTP.AuthenticationPolicy",
+        "Network.HTTP.AuthenticationWithQop"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C15",
+      "tier": "C",
+      "version": "13.0",
+      "title": "RTSP tunnelled over HTTP(S) authentication defaults flip",
+      "summary": "System.HTTPAuthRTSPOverHTTP moves from no to yes and Network.RTSP.AuthenticateRTSPOverHTTP from yes to no.",
+      "impact": "Clients tunnelling RTSP over HTTP need to authenticate differently.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read both parameters and report current values.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "paramsChanged": [
+        {
+          "name": "System.HTTPAuthRTSPOverHTTP",
+          "from": "no",
+          "to": "yes"
+        },
+        {
+          "name": "Network.RTSP.AuthenticateRTSPOverHTTP",
+          "from": "yes",
+          "to": "no"
+        }
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C16",
+      "tier": "C",
+      "version": "13.0",
+      "title": "PTZ parameter and endpoint removals",
+      "summary": "PTZ.Support.S#.JoyStickEmulation and PTZ.Support.S#.GenericHTTP are removed. PTZ.Various.V#.HomePresetSet is removed, replaced by PTZ.Preset.HomePosition. ptzcoordcalc.cgi is removed. The PTZ-Autotracking 2.x legacy .fcgi URLs move to /axis-cgi/ptz-autotracking/*.cgi.",
+      "impact": "PTZ integrations and autotracking clients break in several small ways at once.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read the removed PTZ parameters; report presence of the autotracking application.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "paramsRemoved": [
+        "PTZ.Support.S#.JoyStickEmulation",
+        "PTZ.Support.S#.GenericHTTP",
+        "PTZ.Various.V#.HomePresetSet"
+      ],
+      "apisRemoved": [
+        "axis-cgi/ptzcoordcalc.cgi",
+        "/local/axis-ptz-autotracking/settings.fcgi",
+        "/local/axis-ptz-autotracking/operator.fcgi",
+        "/local/axis-ptz-autotracking/viewer.fcgi"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C17",
+      "tier": "C",
+      "version": "13.0",
+      "title": "best-snapshot renamed to object-snapshot",
+      "summary": "/config/rest/best-snapshot becomes /config/rest/object-snapshot.",
+      "impact": "A pure rename, which makes it a silent client failure — nothing on the camera looks wrong.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera. Grep your integration for the old path.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "C18",
+      "tier": "C",
+      "version": "13.0",
+      "title": "VDO stream info statistics fields removed",
+      "summary": "The statistics.* fields are removed from VDO stream info.",
+      "impact": "Monitoring and dashboard code reading per-stream statistics loses its input.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "paramsRemoved": [
+        "statistics.duration",
+        "statistics.framerate",
+        "statistics.bitrate",
+        "statistics.frame_count",
+        "statistics.idrframe_count",
+        "statistics.bit_count",
+        "statistics.failed_frames",
+        "statistics.accumulated_bytes",
+        "statistics.accumulated_idrbytes"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C19",
+      "tier": "C",
+      "version": "13.0",
+      "title": "File upload VAPIX API removed",
+      "summary": "upload_file.cgi, local_del.cgi, local_list.cgi and file_upload.cgi are removed.",
+      "impact": "Any tooling pushing files onto the camera over these endpoints stops.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "apisRemoved": [
+        "upload_file.cgi",
+        "local_del.cgi",
+        "local_list.cgi",
+        "file_upload.cgi"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C20",
+      "tier": "C",
+      "version": "13.0",
+      "title": "receive.cgi updated for HTTP/1.1 compliance",
+      "summary": "Data is now sent as a sequence of length-delimited buffers, response headers are updated, and Transfer-Encoding: chunked is implemented.",
+      "impact": "Parsers written against the old response shape break.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "C21",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Media Clip and Audio Mixer API changes",
+      "summary": "The audiooutput parameter is removed from the Media Clip API, replaced by audiodeviceid and audioouputid. The tenBandGraphicDspEqualizer audio mixer plugin is replaced by tenBandGraphicEqualizer.",
+      "impact": "Audio integration calls need updating.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "paramsRemoved": [
+        "audiooutput"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "C22",
+      "tier": "C",
+      "version": "13.0",
+      "title": "View Area API behaviour change",
+      "summary": "View areas no longer synchronise with the digital PTZ home position, and the behaviour of root.PTZ.Various.V2.Locked is modified.",
+      "impact": "Multi-view-area setups behave differently after the upgrade. Nothing errors.",
+      "detection": {
+        "method": "none",
+        "sketch": "Behavioural. Report as an advisory on cameras with more than one view area.",
+        "feasibility": "n/a",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "C23",
+      "tier": "C",
+      "version": "13.0",
+      "title": "Unofficial SSH v1 management API removed",
+      "summary": "Only version 2 of the SSH Management API is supported.",
+      "impact": "Provisioning scripts using the v1 API break.",
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "C25",
+      "tier": "C",
+      "version": "13.0",
+      "title": "OS image file compression changed from gzip to zstd",
+      "summary": "AXIS OS image files use zstd compression.",
+      "impact": "External tooling that unpacks or parses firmware images needs adapting.",
+      "detection": {
+        "method": "none",
+        "sketch": "Informational.",
+        "feasibility": "n/a",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "C26",
+      "tier": "C",
+      "version": "13.0",
+      "title": "PTZ continuous pan stops after 10 minutes",
+      "summary": "A PTZ camera no longer pans indefinitely; continuous pan stops automatically after 10 minutes.",
+      "impact": "Guard-tour and continuous-scan setups change behaviour. Nothing errors, which is what makes it easy to miss.",
+      "detection": {
+        "method": "none",
+        "sketch": "Behavioural. Advisory on PTZ models.",
+        "feasibility": "n/a",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "C27",
+      "tier": "C",
+      "version": "12.10",
+      "title": "TLS 1.0 and 1.1 removed for SIP communication",
+      "summary": "In the factory-default state, TLS 1.0/1.1 SIP communication is no longer supported. Already in force since 12.10.",
+      "impact": "Legacy SIP endpoints fail to negotiate.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report SIP configuration where present.",
+        "feasibility": "medium",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L1",
+      "tier": "C",
+      "version": "12.1",
+      "title": "vFAT removed",
+      "summary": "SD cards were delivered with vFAT as the standard file system; it is no longer used.",
+      "applied": true,
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read the SD card file system.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L2",
+      "tier": "C",
+      "version": "12.1",
+      "title": "UPnP discovery disabled by default",
+      "summary": "root.Network.UPnP.Enabled defaults to disabled. Fully removed in 13 — see C4.",
+      "applied": true,
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read the parameter.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "related": [
+        "C4"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "L3",
+      "tier": "C",
+      "version": "12.0",
+      "title": "Old web interface (Web Version B) removed",
+      "summary": "The legacy web interface is gone.",
+      "applied": true,
+      "detection": {
+        "method": "none",
+        "sketch": "Informational.",
+        "feasibility": "n/a",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L4",
+      "tier": "C",
+      "version": "12.0",
+      "title": "HTTP port 80 redirects disabled",
+      "summary": "Redirects from port 80 no longer happen. See C1 for the 13.0 escalation.",
+      "applied": true,
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Covered by the C1 probe.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "related": [
+        "C1"
+      ],
+      "source": "axis-os"
+    },
+    {
+      "id": "L5",
+      "tier": "C",
+      "version": "12.0",
+      "title": "TLS 1.0 and 1.1 removed for HTTPS",
+      "summary": "root.HTTPS.AllowTLS1 and root.HTTPS.AllowTLS11 are removed.",
+      "applied": true,
+      "paramsRemoved": [
+        "root.HTTPS.AllowTLS1",
+        "root.HTTPS.AllowTLS11"
+      ],
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report presence of the parameters.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L6",
+      "tier": "C",
+      "version": "12.0",
+      "title": "Default IP 192.168.0.90/24 removed",
+      "summary": "The fixed default IP is gone and link-local address behaviour changed.",
+      "applied": true,
+      "detection": {
+        "method": "none",
+        "sketch": "Informational — affects out-of-box provisioning workflows.",
+        "feasibility": "n/a",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L7",
+      "tier": "C",
+      "version": "12.0",
+      "title": "WS-Discovery disabled",
+      "summary": "WebService.DiscoveryMode.Discoverable defaults to disabled.",
+      "applied": true,
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read the parameter.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L8",
+      "tier": "C",
+      "version": "12.0",
+      "title": "Basic Device Info VAPIX API can be disabled",
+      "summary": "The API can now be turned off, which discovery tooling must tolerate.",
+      "applied": true,
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Probe the endpoint and handle a disabled response.",
+        "feasibility": "easy",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L9",
+      "tier": "C",
+      "version": "12.0",
+      "title": "releaseinfo.cgi removed",
+      "summary": "axis-release/releaseinfo.cgi is gone.",
+      "applied": true,
+      "apisRemoved": [
+        "axis-release/releaseinfo.cgi"
+      ],
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L10",
+      "tier": "C",
+      "version": "12.0",
+      "title": "getbrand.cgi removed",
+      "summary": "axis-cgi/prod_brand_info/getbrand.cgi is gone.",
+      "applied": true,
+      "apisRemoved": [
+        "axis-cgi/prod_brand_info/getbrand.cgi"
+      ],
+      "detection": {
+        "method": "client-side",
+        "sketch": "Not on-camera.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L11",
+      "tier": "C",
+      "version": "12.0",
+      "title": "Network Filter API removed",
+      "summary": "The Network.Filter parameter group is removed.",
+      "applied": true,
+      "paramsRemoved": [
+        "Network.Filter.Enabled",
+        "Network.Filter.Input.AcceptAddresses",
+        "Network.Filter.Input.Policy",
+        "Network.Filter.Log.Enabled"
+      ],
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Report presence and value.",
+        "feasibility": "trivial",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L12",
+      "tier": "C",
+      "version": "12.0",
+      "title": "SMB 1.0 and 2.0 support removed",
+      "summary": "Network share recording over SMB 1 or 2 no longer works.",
+      "applied": true,
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Read the configured network share settings.",
+        "feasibility": "medium",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L13",
+      "tier": "C",
+      "version": "12.0",
+      "title": "Signed ACAP applications introduced",
+      "summary": "Signing was introduced with AllowUnsigned as the escape hatch. AXIS OS 13 removes the escape hatch — see A4.",
+      "applied": true,
+      "related": [
+        "A4"
+      ],
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Covered by the A4 probe.",
+        "feasibility": "medium",
+        "status": "designed"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "L14",
+      "tier": "C",
+      "version": "12.0",
+      "title": "ACAP post-install exit code EX_NOPERM aborts installation",
+      "summary": "A post-install script exiting 77 aborts the installation. AXIS OS 13 tightens this further — see A6.",
+      "applied": true,
+      "related": [
+        "A6"
+      ],
+      "detection": {
+        "method": "eap-binary",
+        "sketch": "Static inspection of the package.",
+        "feasibility": "hard",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "F1",
+      "tier": "future",
+      "version": "14.0",
+      "title": "Unofficial certificate management APIs removed",
+      "summary": "/axis-cgi/certappmgmt.cgi and /axis-cgi/certmgmt.cgi are removed in AXIS OS 14, September 2028.",
+      "apisRemoved": [
+        "/axis-cgi/certappmgmt.cgi",
+        "/axis-cgi/certmgmt.cgi"
+      ],
+      "detection": {
+        "method": "none",
+        "sketch": "Dated. Listed so it is on your radar, not detected.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "F2",
+      "tier": "future",
+      "version": "14.0",
+      "title": "time.cgi removed",
+      "summary": "The time.cgi VAPIX API is removed in AXIS OS 14.",
+      "apisRemoved": [
+        "axis-cgi/time.cgi"
+      ],
+      "detection": {
+        "method": "none",
+        "sketch": "Dated.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "F3",
+      "tier": "future",
+      "version": "14.0",
+      "title": "axhttp library removed for ACAP applications",
+      "summary": "The axhttp library goes, and the manifest schema removes the transferCgi option.",
+      "detection": {
+        "method": "none",
+        "sketch": "Dated. A rebuild advisory for anyone still on transferCgi.",
+        "feasibility": "n/a",
+        "status": "open"
+      },
+      "source": "axis-os"
+    },
+    {
+      "id": "F4",
+      "tier": "future",
+      "version": "14.0",
+      "title": "SMB support removed for S30 and S40 series",
+      "summary": "SMB goes entirely on the S30 and S40 recorders in AXIS OS 14.",
+      "detection": {
+        "method": "model-list",
+        "sketch": "Dated. Model list lookup when the time comes.",
+        "feasibility": "trivial",
+        "status": "open"
+      },
+      "source": "axis-os"
+    }
+  ],
+  "openQuestions": [
+    {
+      "id": "Q1",
+      "question": "ANSWERED — can an installed ACAP's manifest be read over read-only VAPIX?",
+      "blocks": [],
+      "why": "No manifest endpoint responded on either bench unit, but the question was the wrong one: applications/list.cgi on OS 12.11 already returns CompatibleOsVersions, SignatureStatus and DLPU usage — everything A1, A4 and A8 needed, in one read-only call."
+    },
+    {
+      "id": "Q2",
+      "question": "Is .eap binary inspection in scope for v1, or deferred?",
+      "blocks": [
+        "A3",
+        "A6",
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B8",
+        "B9",
+        "B10",
+        "B11",
+        "B13"
+      ],
+      "why": "Still the boundary. A3 is not exposed by list.cgi on either unit, so it joins the eap-binary group rather than the cheap one."
+    },
+    {
+      "id": "Q4",
+      "question": "How should the scanner treat firmware too old to expose the fields A1/A4/A8 rely on?",
+      "blocks": [
+        "A1",
+        "A4",
+        "A8"
+      ],
+      "why": "M1137/10.12.300 returns none of them. Absence must read as 'unknown — not verifiable from here', never as 'compatible'. A false all-clear is the one output that would make this product worse than nothing."
+    }
+  ],
+  "bench": {
+    "date": "2026-09-06",
+    "note": "First hardware verification. Detections marked verified were confirmed against these units.",
+    "units": [
+      {
+        "model": "AXIS Q1656",
+        "firmware": "12.11.77",
+        "arch": "aarch64",
+        "apps": 13,
+        "listCgiExposes": [
+          "CompatibleOsVersions",
+          "SignatureStatus",
+          "Resources/DeepLearningProcessor",
+          "Bundled"
+        ],
+        "authPolicy": "recommended",
+        "digest": 401,
+        "basic": 200
+      },
+      {
+        "model": "AXIS M1137",
+        "firmware": "10.12.300",
+        "arch": "armv7hf",
+        "apps": 9,
+        "listCgiExposes": [
+          "ApplicationID",
+          "Status",
+          "Version",
+          "LicenseName",
+          "ConfigurationPage"
+        ],
+        "authPolicy": "basic",
+        "digest": 401,
+        "basic": 200
+      }
+    ],
+    "headline": "applications/list.cgi on AXIS OS 12.11 already returns CompatibleOsVersions, SignatureStatus and DLPU resource usage per application. A1, A4 and A8 need no manifest fetch at all. On OS 10.12 list.cgi returns none of those fields, so the detection is firmware-dependent."
+  }
+}

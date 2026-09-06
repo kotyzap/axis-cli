@@ -1,0 +1,26 @@
+# Dependencies — reinstall with `npm install`
+node_modules/
+
+# macOS Finder metadata
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Logs and editor scratch
+*.log
+npm-debug.log*
+.vscode/
+.idea/
+
+# Local camera profiles, if anyone ever copies one into the tree.
+# Real config lives at ~/.axis-cli/config.json and must never be committed.
+config.json
+.axis-cli/
+
+# Compiled test output. Unlike dist/, this is purely a build artefact of
+# `npm test` and is never shipped.
+dist-test/
+
+# NOTE: dist/ is intentionally NOT ignored — the published package ships the
+# compiled output so `git clone && npm install && npm link` works without a build.
