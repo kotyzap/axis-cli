@@ -510,3 +510,11 @@ Worth knowing if you're extending the CLI or wondering why an error reads the wa
 - Credentials are stored in plaintext in `~/.axis-cli/config.json` (mode 0600). Prefer the interactive
   prompt or `AXIS_PASS` over `--pass` so secrets stay out of your shell history and `ps` output.
 - `smoke-test.sh` runs a regression pass against an isolated `$HOME`, so it never touches your real config.
+
+## Licence
+
+[PolyForm Noncommercial 1.0.0](LICENSE). Read it, run it, change it, share it — for any
+noncommercial purpose. Selling it, or building it into something you charge for, needs a
+separate licence: ask at <https://4xs.dev>.
+
+Pavel Kotyza · [4XS.dev](https://4xs.dev)
