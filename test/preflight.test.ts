@@ -140,11 +140,13 @@ describe('A5 — Y2038 32-bit ABI break', () => {
         assert.ok(!evaluate(input({})).findings.some((x) => x.rule === 'A5'));
     });
 
-    test('a 32-bit camera missing from Axis’s published model list is still caught', () => {
-        // The whole point of reading the architecture rather than matching the
-        // model: the M1137 is armv7hf and is not on the published 32-bit list.
+    test('a 32-bit camera on the active track is caught even if the model list omits it', () => {
+        // Architecture is read from the device rather than matching a model list,
+        // because that list omits models — the M1137 among them. On a camera
+        // still receiving AXIS OS 12 the ABI break is the live risk, so A5 fires.
         const r = evaluate(input({ architecture: 'armv7hf', productNumber: 'M1137' }));
         assert.ok(r.findings.some((x) => x.rule === 'A5' && x.severity === 'blocking'));
+        assert.ok(!r.findings.some((x) => x.rule === 'A9' && x.severity === 'blocking'));
     });
 
     test('a 32-bit camera with no applications is advisory, not a rollback', () => {
@@ -231,5 +233,58 @@ describe('absence of evidence is never a pass', () => {
         );
         assert.equal(r.verdict, 'will-upgrade');
         assert.equal(r.findings.length, 0);
+    });
+});
+
+
+describe('A9 — no AXIS OS 13 for this hardware', () => {
+    // The rule that changes what somebody buys, so it is the one that must be
+    // hardest to trigger by accident.
+    const strandedInput = (over = {}) =>
+        input({
+            architecture: 'armv7hf',
+            productNumber: 'M1137',
+            firmware: { raw: '10.12.300' },
+            ...over,
+        });
+
+    test('32-bit, absent from the list, and never offered AXIS OS 11', () => {
+        const r = evaluate(strandedInput());
+        assert.equal(r.verdict, 'no-upgrade-path');
+        const f = r.findings.find((x) => x.rule === 'A9')!;
+        assert.equal(f.severity, 'blocking');
+        assert.match(f.message, /Confirm with Axis/);
+    });
+
+    test('A5 is suppressed, because no rebuild helps an upgrade that never arrives', () => {
+        assert.ok(!evaluate(strandedInput()).findings.some((x) => x.rule === 'A5'));
+    });
+
+    test('the same model on the active track is unknown, not stranded', () => {
+        // Absence from Axis's list is not proof: it omits large ARTPEC-7 families
+        // such as the P1375 and P3245, and stranding those would tell a customer
+        // to replace working cameras.
+        for (const fw of ['11.11.0', '12.11.77']) {
+            const r = evaluate(strandedInput({ firmware: { raw: fw } }));
+            assert.notEqual(r.verdict, 'no-upgrade-path', fw);
+            const f = r.findings.find((x) => x.rule === 'A9');
+            if (f) assert.equal(f.severity, 'unknown', 'never blocking on the active track');
+        }
+    });
+
+    test('a model Axis does list gets AXIS OS 13 whatever firmware it is on', () => {
+        const r = evaluate(strandedInput({ productNumber: 'Q6075-SE' }));
+        assert.ok(!r.findings.some((x) => x.rule === 'A9' && x.severity === 'blocking'));
+        assert.ok(r.findings.some((x) => x.rule === 'A5'), 'the ABI break is real for it');
+    });
+
+    test('64-bit hardware is never stranded', () => {
+        const r = evaluate(strandedInput({ architecture: 'aarch64' }));
+        assert.ok(!r.findings.some((x) => x.rule === 'A9'));
+    });
+
+    test('targeting AXIS OS 12 raises nothing', () => {
+        const r = evaluate(strandedInput({ targetOsMajor: 12 }));
+        assert.ok(!r.findings.some((x) => x.rule === 'A9'));
     });
 });

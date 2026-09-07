@@ -1,6 +1,6 @@
 {
   "$schema": "./rules.schema.json",
-  "rulesetVersion": "3.0.0",
+  "rulesetVersion": "3.1.0",
   "generated": "2026-09-06",
   "owner": "Pavel Kotyza · 4XS.dev",
   "sources": {
@@ -110,10 +110,10 @@
       "version": "13.0",
       "title": "Y2038 — 64-bit time_t ABI break on 32-bit products",
       "summary": "AXIS OS 13 moves to 64-bit time_t and 64-bit time APIs in glibc and the kernel. On 32-bit products this is an ABI break: ACAP applications and internal services must be recompiled.",
-      "impact": "On the listed models, any ACAP not rebuilt against the new ABI must be removed before the upgrade or the device rolls back.",
+      "impact": "On the listed models, any ACAP not rebuilt against the new ABI must be removed before the upgrade or the device rolls back. A 32-bit product NOT on this list does not receive AXIS OS 13 at all — see A9.",
       "detection": {
         "method": "vapix-param",
-        "sketch": "Read Properties.System.Architecture. armv7hf is 32-bit and exposed to the Y2038 ABI break; aarch64 is not. Keep the published model list as a cross-check only — the architecture parameter is ground truth and covers models the list omits.",
+        "sketch": "Read Properties.System.Architecture. aarch64 is not exposed to the Y2038 ABI break. armv7hf is — but only matters if the product actually receives AXIS OS 13, so cross-check the model against models32bit below (Axis's published list of 32-bit products that will get AXIS OS 13). A 32-bit product absent from that list has no AXIS OS 13 at all and is rule A9, not this one.",
         "feasibility": "trivial",
         "status": "verified"
       },
@@ -124,6 +124,7 @@
         "AXIS A1610",
         "AXIS A1610-B",
         "AXIS A1710-B",
+        "AXIS A1711",
         "AXIS A1810-B",
         "AXIS A1811",
         "AXIS A9210",
@@ -134,12 +135,14 @@
         "AXIS C1610-VE",
         "AXIS C8110",
         "AXIS C8210",
+        "D201-S XPT Q6075",
+        "EXCAM XPT Q6075",
         "AXIS F9104-B",
         "AXIS F9111",
         "AXIS F9114",
         "AXIS F9114-B",
         "AXIS I8016-LVE",
-        "AXIS M3057-PLR Mk II",
+        "AXIS M3057-PLR MK II",
         "AXIS M4215-LV",
         "AXIS M5000",
         "AXIS M5000-G",
@@ -153,7 +156,7 @@
         "AXIS P3925-R",
         "AXIS P3935-LR",
         "AXIS P5654-E",
-        "AXIS P5654-E Mk II",
+        "AXIS P5654-E MK II",
         "AXIS P5655-E",
         "AXIS P5676-LE",
         "AXIS P7304",
@@ -171,11 +174,9 @@
         "AXIS Q6318-LE",
         "AXIS Q8615-E",
         "AXIS Q8752-E",
-        "AXIS Q8752-E Mk II",
+        "AXIS Q8752-E MK II",
         "AXIS V5925",
-        "AXIS V5938",
-        "D201-S XPT Q6075",
-        "ExCam XPT Q6075"
+        "AXIS V5938"
       ],
       "source": "axis-os",
       "benchNote": "Q1656 reports aarch64 (safe). M1137 reports armv7hf (exposed) and does NOT appear on the published 32-bit model list — the model list alone would have missed it. This replaces the model-list lookup as the primary detection."
@@ -228,6 +229,24 @@
       },
       "source": "axis-os",
       "benchNote": "Confirmed machine-readable on Q1656/12.11.77 — no manifest needed. Every app on the bench unit reported used=No, so a positive case is still untested."
+    },
+    {
+      "id": "A9",
+      "tier": "A",
+      "version": "13.0",
+      "title": "No AXIS OS 13 for this hardware",
+      "summary": "AXIS OS 13 does not exist for every camera. Axis states that AXIS OS 13 will not support ARTPEC-6 products, and publishes the list of 32-bit products that will receive it (see A5 models32bit). A 32-bit camera absent from that list has no AXIS OS 13 upgrade to prepare for.",
+      "impact": "This changes what the owner does, not how carefully they do it. No application work, vendor build or configuration change makes AXIS OS 13 available on this hardware: the camera runs its current firmware until it is replaced. Reported separately from the rollback cases so that a fleet splits into work to schedule and hardware to budget for.",
+      "detection": {
+        "method": "vapix-param",
+        "sketch": "Properties.System.Architecture is 32-bit (armv7hf), Brand.ProdNbr is not in A5's models32bit, AND Properties.Firmware.Version is still on AXIS OS 10. Matching on the model is exact, not a prefix — a prefix match would clear a variant Axis never listed.",
+        "feasibility": "trivial",
+        "status": "verified"
+      },
+      "quote": "AXIS OS 13 won't support Artpec-6 products.",
+      "note": "This is the one rule in the set whose false positive costs money rather than time: telling an owner their cameras cannot be upgraded when they can invites a replacement they do not need. It therefore reports 'no published upgrade path', names its source, and tells the reader to confirm with Axis — the opposite of every other rule here, which errs toward 'unverified' because a false all-clear is the expensive error there. Absence from the published list is deliberately not sufficient on its own: that list omits large ARTPEC-7 families such as the P1375 and P3245, and ARTPEC-7 is not the generation Axis says is unsupported. The firmware track is what settles it — an ARTPEC-7 product has been offered AXIS OS 11 and 12, while an ARTPEC-6 product is capped on the 10.12 LTS track, so a 32-bit camera absent from the list and still on AXIS OS 10 was never offered AXIS OS 11 either. A camera on 11.x or 12.x that is absent from the list is reported as unknown, never as stranded.",
+      "benchNote": "Verified on the bench M1137 (10.12.300, armv7hf), which reports 32-bit and is absent from the published list. Earlier in this project that absence was misread as the list being incomplete; the list was answering a question the rule was not asking.",
+      "source": "axis-os"
     },
     {
       "id": "B1",

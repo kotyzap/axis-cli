@@ -87,6 +87,8 @@ function verdictCell(r: CameraReport): string {
     if (!r.reachable) return chalk.grey('unreachable');
     const v = r.result!.verdict;
     const label = VERDICT_LABEL[v];
+    // Blue, not red: not a risk to manage but a fact to budget for.
+    if (v === 'no-upgrade-path') return chalk.blue.bold(label);
     if (v === 'will-roll-back') return chalk.red.bold(label);
     if (v === 'unknown') return chalk.magenta(label);
     if (v === 'will-lose-function') return chalk.yellow(label);
@@ -213,7 +215,11 @@ export function registerPreflightCommands(program: Command) {
                 }
 
                 // Scripts and maintenance-window checks read the exit code.
-                if (result.verdict === 'will-roll-back') process.exitCode = 2;
+                // 3 is its own code: a script that gates an upgrade on exit 0
+                // must not proceed, but this is not the rollback case either —
+                // there is nothing to fix, so retrying will never clear it.
+                if (result.verdict === 'no-upgrade-path') process.exitCode = 3;
+                else if (result.verdict === 'will-roll-back') process.exitCode = 2;
                 else if (result.verdict === 'unknown') process.exitCode = 1;
             })
         );
@@ -280,8 +286,33 @@ export function registerPreflightCommands(program: Command) {
                 if (!isJsonMode()) {
                     const rollback = reports.filter((r) => r.result?.verdict === 'will-roll-back');
                     const unknown = reports.filter((r) => r.result?.verdict === 'unknown');
+                    const stranded = reports.filter((r) => r.result?.verdict === 'no-upgrade-path');
 
                     console.log();
+                    // First, and separately: these are a purchase, not a task. Mixed
+                    // into the rollback list, somebody spends a morning trying to
+                    // fix hardware that cannot be fixed.
+                    if (stranded.length > 0) {
+                        const byModel = [...stranded.reduce((m, r) => {
+                            const k = r.product ?? 'unidentified model';
+                            return m.set(k, (m.get(k) ?? 0) + 1);
+                        }, new Map<string, number>())].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+                        console.log(
+                            chalk.blue.bold(
+                                `  ${stranded.length} camera(s) will not get AXIS OS ${target} at all: ` +
+                                    byModel.map(([m, n]) => `${m}${n > 1 ? ` x${n}` : ''}`).join(', ')
+                            )
+                        );
+                        console.log(
+                            chalk.grey(
+                                '  32-bit models Axis does not list as receiving it, still on AXIS OS 10 and so\n' +
+                                    '  never offered AXIS OS 11 either. No application work changes that — they\n' +
+                                    '  stay on their current firmware until replaced. Confirm with Axis before\n' +
+                                    '  budgeting for replacements.'
+                            )
+                        );
+                        console.log();
+                    }
                     for (const r of rollback) {
                         const blocking = r.result!.findings.filter((f) => f.severity === 'blocking');
                         const apps = new Set(blocking.filter((f) => f.application).map((f) => f.application!));
@@ -308,6 +339,7 @@ export function registerPreflightCommands(program: Command) {
 
                 if (reports.some((r) => r.result?.verdict === 'will-roll-back')) process.exitCode = 2;
                 else if (reports.some((r) => !r.reachable || r.result?.verdict === 'unknown')) process.exitCode = 1;
+                else if (reports.some((r) => r.result?.verdict === 'no-upgrade-path')) process.exitCode = 3;
             })
         );
 

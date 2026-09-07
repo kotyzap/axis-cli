@@ -1,25 +1,17 @@
 "use strict";
-/**
- * Customer-facing upgrade report.
- *
- * An integrator runs the scan and hands this to the person who owns the cameras,
- * so it has to survive being read by someone who has never heard of an ACAP: the
- * verdict first, the work second, the evidence last.
- *
- * Emitted as a single self-contained HTML file rather than a PDF, for two
- * reasons. Print-to-PDF from any browser produces a better-typeset document than
- * a bundled PDF library would, and — more importantly — a PDF toolchain would add
- * a heavyweight dependency to a CLI whose whole appeal is that it installs
- * anywhere and touches nothing. The print stylesheet below is written for A4 and
- * tested against Chrome's "Save as PDF".
- *
- * No external fonts, scripts or images: a report that phones home is a report an
- * integrator cannot email to a security-conscious client.
- */
+// SYNCED COPY — do not edit here.
+// Source of truth: axis-cli/src/preflight/report.ts
+// Re-run `node sync.mjs` after changing it there.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.renderReport = renderReport;
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const VERDICT_COPY = {
+    'no-upgrade-path': {
+        label: 'No AXIS OS 13',
+        cls: 'v-nopath',
+        meaning: 'Axis publishes no AXIS OS 13 for this hardware, and it never received AXIS OS 11 either. ' +
+            'Nothing to prepare; it stays on its current firmware until it is replaced.',
+    },
     'will-roll-back': {
         label: 'Will roll back',
         cls: 'v-bad',
@@ -117,12 +109,23 @@ function cameraSection(c, input) {
 }
 function renderReport(input) {
     const cams = input.cameras;
+    // Excludes cameras with no AXIS OS 13 path: they are counted and explained
+    // separately, and a rollback figure that includes them overstates the work.
     const rollback = cams.filter((c) => c.result?.verdict === 'will-roll-back');
     // Cameras carrying ANY unverifiable check, not just those whose overall verdict
     // is unknown — a camera can roll back for one reason and still have checks that
     // could not be made.
     const withUnknowns = cams.filter((c) => (c.result?.unknown ?? 0) > 0);
     const clean = cams.filter((c) => c.result?.verdict === 'will-upgrade');
+    // Kept apart from every other group in this report on purpose. These cameras
+    // are not a risk to manage or a task to schedule — they are a line in next
+    // year's budget, and mixing them into the rollback count means somebody
+    // spends a morning trying to fix hardware that cannot be fixed.
+    const stranded = cams.filter((c) => c.result?.verdict === 'no-upgrade-path');
+    const strandedByModel = [...stranded.reduce((m, c) => {
+            const k = c.product ?? 'Unidentified model';
+            return m.set(k, (m.get(k) ?? 0) + 1);
+        }, new Map())].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     const unreachable = cams.filter((c) => !c.reachable);
     // The number the reader acts on: distinct applications to deal with, across
     // the fleet — not the number of rule hits, which double-counts an app that
@@ -193,6 +196,13 @@ td{padding:7px 8px 7px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .v-bad{background:var(--bad-bg);color:var(--bad)}
 .v-unk{background:var(--unk-bg);color:var(--unk)}
 .v-warn{background:var(--unk-bg);color:var(--unk)}
+.v-nopath{background:#eef2fb;color:#1d4ed8}
+.headline.nopath{border-left-color:#1d4ed8;background:#eef2fb}
+table.replace{width:100%;border-collapse:collapse;margin-top:8px;font-size:10pt}
+table.replace th{text-align:left;border-bottom:1px solid #333;padding:0 8px 4px 0;font-size:8.5pt;
+  text-transform:uppercase;letter-spacing:.05em}
+table.replace td{padding:4px 8px 4px 0;border-bottom:1px solid #e2e2dd}
+table.replace td.n{text-align:right;font-variant-numeric:tabular-nums;width:5em}
 .v-ok{background:var(--ok-bg);color:var(--ok)}
 
 /* per-camera detail */
@@ -227,6 +237,8 @@ li.s-advisory .rid{color:var(--ok)}
 /* method + footer */
 .method{background:var(--panel);border-radius:5px;padding:14px 16px;margin:24px 0 0;
   font-size:9.5pt;break-inside:avoid}
+ul.scope-warn{margin:6px 0 0 18px;padding:0}
+ul.scope-warn li{margin:2px 0}
 .method h2{margin-top:0}
 .method p{margin:0 0 8px;max-width:78ch}
 .method p:last-child{margin:0}
@@ -263,10 +275,31 @@ Nothing was installed or changed on any device.</p>
 
 <div class="tiles">
   <div class="tile bad"><b>${rollback.length}</b><span>will roll back</span></div>
+  ${stranded.length ? `<div class="tile nopath"><b>${stranded.length}</b><span>no AXIS OS 13</span></div>` : ''}
   <div class="tile unk"><b>${withUnknowns.length}</b><span>with unverified checks</span></div>
   <div class="tile ok"><b>${clean.length}</b><span>will upgrade</span></div>
   <div class="tile"><b>${appsToFix.size}</b><span>apps to fix</span></div>
 </div>
+
+${stranded.length
+        ? `<div class="headline nopath">
+  <p><strong>${stranded.length} of these ${cams.length} camera${cams.length === 1 ? '' : 's'} cannot run AXIS OS
+  ${input.targetOsMajor} at all.</strong> They are 32-bit models that Axis does not list as receiving AXIS OS
+  ${input.targetOsMajor}, and they are still on AXIS OS 10 — so they were never offered AXIS OS 11 either.
+  Axis states that AXIS OS 13 will not support ARTPEC-6 products. No application work changes this: they keep
+  running their current firmware until they are replaced. Everything else in this report concerns the cameras
+  that can move.</p>
+  <table class="replace">
+    <thead><tr><th>Model</th><th class="n">Cameras</th></tr></thead>
+    <tbody>${strandedByModel
+            .map(([m, n]) => `<tr><td>${esc(m)}</td><td class="n">${n}</td></tr>`)
+            .join('')}</tbody>
+  </table>
+  <p style="margin-top:8px">Confirm the upgrade path for these models with Axis before committing to
+  replacement. Source for the list this is checked against:
+  <span class="mono">https://help.axis.com/en-us/axis-os</span></p>
+</div>`
+        : ''}
 
 <h2>Fleet</h2>
 <table class="fleet">
@@ -292,6 +325,14 @@ ${cams.map((c) => cameraSection(c, input)).join('\n')}
   <p>Every camera was read over VAPIX using an account you supplied: the list of installed applications
   and a small set of configuration parameters. Nothing was written, no software was installed, and no
   data left your network.</p>
+${input.scopeLine
+        ? `<p><strong>What was covered.</strong> ${esc(input.scopeLine)} A camera on a network that was not
+  scanned does not appear anywhere in this report — not as a pass and not as a warning. If your site has
+  cameras outside those ranges, this report does not describe them.</p>` +
+            (input.scopeWarnings?.length
+                ? `<ul class="scope-warn">${input.scopeWarnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>`
+                : '')
+        : ''}
   <p><strong>“Cannot be determined” is not a pass.</strong> AXIS OS versions older than 12 do not publish
   the per-application compatibility and signature information two of these checks rely on. Those cameras
   are reported as unverified rather than as safe, because a false all-clear is worse than no report.</p>

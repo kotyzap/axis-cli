@@ -1,3 +1,7 @@
+// SYNCED COPY — do not edit here.
+// Source of truth: axis-cli/src/preflight/engine.ts
+// Re-run `node sync.mjs` after changing it there.
+
 /**
  * Upgrade Preflight — will this camera survive AXIS OS 13?
  *
@@ -47,10 +51,29 @@ export type FirmwareVersion = { raw?: string | null };
 /** Case- and prefix-insensitive parameter lookup. */
 export type ParamLookup = { get(name: string): string | undefined };
 
+/**
+ * The only import in this file, and a deliberate exception to its no-imports
+ * rule: os13.ts is pure data and one pure function, with no runtime dependency
+ * of any kind. It travels with this file (see acap/sync.mjs) because the
+ * question "does this hardware get AXIS OS 13 at all" cannot be answered from
+ * the camera alone — it needs Axis's published list.
+ */
+import { OS13_SOURCE, osMajor, upgradePath } from './os13';
+
 export type Severity = 'blocking' | 'degraded' | 'advisory' | 'unknown';
 
 /** The per-camera answer, in the words the report uses. */
-export type Verdict = 'will-upgrade' | 'will-roll-back' | 'will-lose-function' | 'unknown';
+export type Verdict =
+    | 'will-upgrade'
+    | 'will-roll-back'
+    | 'will-lose-function'
+    /**
+     * There is no AXIS OS 13 for this hardware, so the rollback question is moot.
+     * A separate verdict rather than a finding on top of "will roll back",
+     * because the action is different in kind: not vendor emails, a purchase.
+     */
+    | 'no-upgrade-path'
+    | 'unknown';
 
 export type Finding = {
     /** Rule id in the published ruleset, e.g. "A1". */
@@ -79,6 +102,8 @@ export type PreflightResult = {
     /** Counts by severity, for the fleet table. */
     blocking: number;
     unknown: number;
+    /** Installed applications, or null when the list could not be read. */
+    appCount: number | null;
 };
 
 /**
@@ -385,6 +410,60 @@ function ruleC3(input: PreflightInput): Finding[] {
     ];
 }
 
+/**
+ * A9 — no published AXIS OS 13 path for this hardware.
+ *
+ * The rule that changes what somebody does with their money, so it is the one
+ * that hedges. Every other rule here errs toward "unverified" because a false
+ * all-clear is the expensive mistake; this one's false positive tells a customer
+ * to replace working cameras. Hence "no published upgrade path", the source
+ * named in the message, and an explicit instruction to confirm before spending.
+ *
+ * When it fires, A5 is suppressed: telling someone to rebuild their applications
+ * against an ABI they will never meet is worse than saying nothing.
+ */
+function ruleA9(input: PreflightInput): Finding[] {
+    if (input.targetOsMajor < 13) return [];
+
+    const path = upgradePath(input.architecture, input.productNumber, osMajor(input.firmware.raw));
+    if (path === 'has-path') return [];
+
+    if (path === 'unknown') {
+        return [
+            {
+                rule: 'A9',
+                severity: 'unknown',
+                message:
+                    'Whether AXIS OS ' +
+                    input.targetOsMajor +
+                    ' exists for this hardware could not be determined. It is a 32-bit product that Axis ' +
+                    'does not name among the 32-bit products receiving AXIS OS ' +
+                    input.targetOsMajor +
+                    ', but it is on the active AXIS OS track, so its absence from that list is not proof ' +
+                    'there is no upgrade. Ask Axis for this model before planning either work or replacement. ' +
+                    'Source: ' +
+                    OS13_SOURCE,
+            },
+        ];
+    }
+
+    const model = input.productNumber ? `The ${input.productNumber}` : 'This camera';
+    const fw = input.firmware.raw ? ` It stays on AXIS OS ${input.firmware.raw}.` : '';
+    return [
+        {
+            rule: 'A9',
+            severity: 'blocking',
+            message:
+                `${model} is a 32-bit product, is not on Axis's published list of 32-bit products that will ` +
+                `receive AXIS OS ${input.targetOsMajor}, and is still on AXIS OS 10 — so it was never offered ` +
+                `AXIS OS 11 either. That is a device on a closed track, and Axis states that AXIS OS 13 will ` +
+                `not support ARTPEC-6 products. There is no AXIS OS ${input.targetOsMajor} to prepare for ` +
+                `here: no application change makes one available.${fw} Confirm with Axis before replacing ` +
+                `hardware on the strength of this. Source: ${OS13_SOURCE}`,
+        },
+    ];
+}
+
 /** C4 — UPnP discovery removed entirely. */
 function ruleC4(input: PreflightInput): Finding[] {
     const value = input.params.get('Network.UPnP.Enabled');
@@ -426,7 +505,13 @@ export function evaluate(input: PreflightInput): PreflightResult {
         findings.push(...ruleA8(input, input.apps));
     }
 
-    findings.push(...ruleA5(input));
+    // A9 first: if there is no AXIS OS 13 for this hardware, A5's advice to
+    // rebuild every application against the new ABI is advice about an upgrade
+    // that will never be offered.
+    const noPath = ruleA9(input);
+    findings.push(...noPath);
+    const strandedHardware = noPath.some((f) => f.rule === 'A9' && f.severity === 'blocking');
+    if (!strandedHardware) findings.push(...ruleA5(input));
     findings.push(...ruleC1(input));
     findings.push(...ruleC2(input));
     findings.push(...ruleC3(input));
@@ -437,15 +522,20 @@ export function evaluate(input: PreflightInput): PreflightResult {
     const degraded = findings.filter((f) => f.severity === 'degraded').length;
 
     let verdict: Verdict;
-    if (blocking > 0) verdict = 'will-roll-back';
+    // Checked before rollback: a camera with no AXIS OS 13 cannot roll back from
+    // an upgrade it will never be offered, and reporting it as a rollback risk
+    // sends the reader to fix applications instead of to their account manager.
+    if (strandedHardware) verdict = 'no-upgrade-path';
+    else if (blocking > 0) verdict = 'will-roll-back';
     else if (unknown > 0) verdict = 'unknown';
     else if (degraded > 0) verdict = 'will-lose-function';
     else verdict = 'will-upgrade';
 
-    return { verdict, findings, blocking, unknown };
+    return { verdict, findings, blocking, unknown, appCount: input.apps ? input.apps.length : null };
 }
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
+    'no-upgrade-path': 'no upgrade path',
     'will-upgrade': 'will upgrade',
     'will-roll-back': 'WILL ROLL BACK',
     'will-lose-function': 'will lose function',
