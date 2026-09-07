@@ -17,9 +17,35 @@
  * output that would make this tool worse than not running it.
  */
 
-import { AcapApplication } from '../vapix/apps';
-import { FirmwareVersion } from '../vapix/firmware';
-import { ParamSet } from '../vapix/params';
+/*
+ * NO IMPORTS BY DESIGN.
+ *
+ * This file is the one place a Preflight rule is expressed, and it is shared
+ * verbatim between axis-cli and the Preflight ACAP (`npm run sync:engine`).
+ * Anything it imports would have to exist in both, so it imports nothing and
+ * describes what it needs structurally instead — axis-cli's AcapApplication and
+ * ParamSet satisfy these shapes as they are.
+ *
+ * A second implementation of these rules is the failure mode worth the most
+ * effort to avoid: two engines drift, and the one that drifts silently is the one
+ * telling somebody their fleet is safe.
+ */
+
+/** The subset of an installed application the rules read. */
+export type AppInfo = {
+    name: string;
+    niceName?: string | null;
+    version?: string | null;
+    signatureStatus?: string | null;
+    compatibleOsVersions?: { min: string | null; max: string | null }[] | null;
+    resources?: { name: string; used: boolean | null }[] | null;
+};
+
+/** Just enough of a firmware version for the messages. */
+export type FirmwareVersion = { raw?: string | null };
+
+/** Case- and prefix-insensitive parameter lookup. */
+export type ParamLookup = { get(name: string): string | undefined };
 
 export type Severity = 'blocking' | 'degraded' | 'advisory' | 'unknown';
 
@@ -41,10 +67,10 @@ export type PreflightInput = {
     architecture: string | null;
     productNumber: string | null;
     /** Null when the camera cannot list applications at all. */
-    apps: AcapApplication[] | null;
+    apps: AppInfo[] | null;
     /** Why the application list is missing, when it is. */
     appsUnavailableReason?: string;
-    params: ParamSet;
+    params: ParamLookup;
 };
 
 export type PreflightResult = {
@@ -66,12 +92,12 @@ export type PreflightResult = {
  * "cannot tell", not "incompatible". If *some* entries carry a field and others
  * do not, the firmware does report it, and the ones without are real findings.
  */
-function reportsCompatibility(apps: AcapApplication[]): boolean {
-    return apps.some((a) => a.compatibleOsVersions !== null);
+function reportsCompatibility(apps: AppInfo[]): boolean {
+    return apps.some((a) => a.compatibleOsVersions != null);
 }
 
-function reportsSignature(apps: AcapApplication[]): boolean {
-    return apps.some((a) => a.signatureStatus !== null);
+function reportsSignature(apps: AppInfo[]): boolean {
+    return apps.some((a) => a.signatureStatus != null);
 }
 
 /** Leading integer of an Axis version string: "12.11" -> 12, "13" -> 13. */
@@ -92,7 +118,7 @@ function majorOf(version: string | null): number | null {
  * one declaring Max=12 is not. Bench evidence: AXIS Object Analytics 1.26.205,
  * a *bundled* application, declares Max=12 on a 12.11 camera.
  */
-function ruleA1(input: PreflightInput, apps: AcapApplication[]): Finding[] {
+function ruleA1(input: PreflightInput, apps: AppInfo[]): Finding[] {
     const target = input.targetOsMajor;
 
     if (!reportsCompatibility(apps)) {
@@ -112,7 +138,7 @@ function ruleA1(input: PreflightInput, apps: AcapApplication[]): Finding[] {
     return apps.flatMap((app): Finding[] => {
         const label = app.niceName ? `${app.niceName} (${app.name})` : app.name;
 
-        if (app.compatibleOsVersions === null) {
+        if (app.compatibleOsVersions == null) {
             return [
                 {
                     rule: 'A1',
@@ -161,7 +187,7 @@ function ruleA1(input: PreflightInput, apps: AcapApplication[]): Finding[] {
  * It is reported as its own wording, though, because unknown is not a positive
  * statement that the package is unsigned.
  */
-function ruleA4(input: PreflightInput, apps: AcapApplication[]): Finding[] {
+function ruleA4(input: PreflightInput, apps: AppInfo[]): Finding[] {
     if (!reportsSignature(apps)) {
         return [
             {
@@ -276,12 +302,12 @@ function ruleA5(input: PreflightInput): Finding[] {
  * mismatch we cannot observe would be exactly the confident wrong answer this
  * tool exists to prevent.
  */
-function ruleA8(input: PreflightInput, apps: AcapApplication[]): Finding[] {
-    const anyDeclared = apps.some((a) => a.resources !== null);
+function ruleA8(input: PreflightInput, apps: AppInfo[]): Finding[] {
+    const anyDeclared = apps.some((a) => a.resources != null);
     if (!anyDeclared) return [];
 
     return apps.flatMap((app): Finding[] => {
-        if (app.resources === null) return [];
+        if (app.resources == null) return [];
         const dlpu = app.resources.find((r) => r.name.toLowerCase() === 'deeplearningprocessor');
         if (!dlpu || !dlpu.used) return [];
         const label = app.niceName ?? app.name;

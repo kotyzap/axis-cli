@@ -13,7 +13,7 @@
     "start": "node dist/index.js",
     "sync:rules": "node scripts/sync-rules.mjs"
   },
-  "license": "ISC",
+  "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
     "camstreamerlib": "^4.0.27",
     "chalk": "^4.1.2",

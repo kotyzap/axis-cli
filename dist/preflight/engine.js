@@ -32,10 +32,10 @@ exports.evaluate = evaluate;
  * do not, the firmware does report it, and the ones without are real findings.
  */
 function reportsCompatibility(apps) {
-    return apps.some((a) => a.compatibleOsVersions !== null);
+    return apps.some((a) => a.compatibleOsVersions != null);
 }
 function reportsSignature(apps) {
-    return apps.some((a) => a.signatureStatus !== null);
+    return apps.some((a) => a.signatureStatus != null);
 }
 /** Leading integer of an Axis version string: "12.11" -> 12, "13" -> 13. */
 function majorOf(version) {
@@ -71,7 +71,7 @@ function ruleA1(input, apps) {
     }
     return apps.flatMap((app) => {
         const label = app.niceName ? `${app.niceName} (${app.name})` : app.name;
-        if (app.compatibleOsVersions === null) {
+        if (app.compatibleOsVersions == null) {
             return [
                 {
                     rule: 'A1',
@@ -217,11 +217,11 @@ function ruleA5(input) {
  * tool exists to prevent.
  */
 function ruleA8(input, apps) {
-    const anyDeclared = apps.some((a) => a.resources !== null);
+    const anyDeclared = apps.some((a) => a.resources != null);
     if (!anyDeclared)
         return [];
     return apps.flatMap((app) => {
-        if (app.resources === null)
+        if (app.resources == null)
             return [];
         const dlpu = app.resources.find((r) => r.name.toLowerCase() === 'deeplearningprocessor');
         if (!dlpu || !dlpu.used)
